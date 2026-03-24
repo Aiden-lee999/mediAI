@@ -7,9 +7,9 @@ const openai = new OpenAI({
 });
 
 function determineModel(question: string, hasImage: boolean) {
-  if (hasImage) return 'gpt-5.4-pro';
-  if (!question || question.length < 50) return 'gpt-5.4-mini';
-  return 'gpt-5.4';
+  if (hasImage) return 'gpt-4o';
+  if (!question || question.length < 50) return 'gpt-4o-mini';
+  return 'gpt-4o';
 }
 
 export async function POST(req: Request) {
@@ -82,4 +82,5 @@ export async function POST(req: Request) {
     });
   }
 }
+
 
