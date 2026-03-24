@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedAssist Pro</title>
+    <link rel="stylesheet" href="chat-style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- 의사 전용 로그인 인증 오버레이 -->
+    <div id="loginOverlay" class="auth-overlay hidden">
+        <div class="auth-card">
+            <h2>AI MD넷 (BETA)</h2>
+            <p>의사 면허 및 전문의 인증 폐쇄형 플랫폼</p>
+            <div class="auth-form">
+                <div>
+                    <label>의사 면허번호</label>
+                    <input type="text" id="licenseNum" placeholder="면허번호 입력 (현재 임시 자유 가입)">
+                </div>
+                <div>
+                    <label>표방 진료과 / 전문과목</label>
+                    <select id="specialtySelect">
+                        <option value="내과">내과</option>
+                        <option value="정형외과">정형외과</option>
+                        <option value="소아청소년과">소아청소년과</option>
+                        <option value="일반의">일반의 / 기타</option>
+                    </select>
+                </div>
+                <div>
+                    <label>관심 주요 분야 (키워드)</label>
+                    <input type="text" id="interestTags" placeholder="예: 초음파, 골다공증, 비급여">
+                </div>
+                <button class="auth-btn" id="doLoginBtn">로그인 및 입장하기</button>
+            </div>
+        </div>
+    </div>
+    <!-- 사이드바 모바일 오버레이 -->
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
+
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <button class="new-chat-btn" id="newChatBtn">
+                <span> <i class="fa-solid fa-pen-to-square"></i> 새로운 대화 </span>
+            </button>
+        </div>
+        
+        <div class="history-section">
+            <div class="nav-group">플랫폼 모듈</div>
+            <div class="menu-item" onclick="switchToChat(); fillSearch('2형 당뇨 권장 치료 및 최신 논문 정리해줘')"><i class="fa-solid fa-stethoscope"></i> 질환/최신지견 검색</div>
+            <div class="menu-item" onclick="switchToChat(); fillSearch('고지혈증 처방약과 로수바스타틴 상호작용 병용금기 찾아줘')"><i class="fa-solid fa-pills"></i> 약품 인텔리전스</div>
+            <div class="menu-item" onclick="switchToTranslation()"><i class="fa-solid fa-earth-americas"></i> 글로벌 번역 대시보드</div>
+            <div class="menu-item" id="navLibrary"><i class="fa-solid fa-bookmark"></i> 내 보관함</div>
+
+            <div class="nav-group" style="margin-top:20px;">이전 대화</div>
+            <div id="sidebarHistoryList">
+                <!-- 동적 렌더링 -->
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-wrapper">
+        <header class="top-header">
+            <button id="mobileMenuBtn" class="mobile-menu-btn"><i class="fa-solid fa-bars"></i></button>
+            <span id="modeTitle">MedAssist Pro v2</span>
+        </header>
+
+        <div class="chat-area" id="scrollArea">
+            <div id="welcomeView" class="welcome-view">
+                <div class="welcome-logo"><i class="fa-solid fa-user-doctor"></i></div>
+                <h2 class="welcome-title">무엇을 도와드릴까요? <span id="docNameDisplay"></span></h2>
+                <div class="suggestions" id="personalizedSuggestions">
+                    <!-- JS 에서 전공에 맞게 렌더링 -->
+                </div>
+            </div>
+
+            <div id="chatFlowContainer" class="chat-flow-container hidden">
+                <!-- 채팅 본문 -->
+            </div>
+            
+            <div id="translationDashboard" class="translation-dashboard hidden">
+                <div class="translation-header">
+                    <h2><i class="fa-solid fa-earth-americas"></i> 진료실 외국인 번역</h2>
+                    <p>자주 쓰는 진료 문답이나 환자에게 설명할 내용을 빠르고 정확하게 의학적 뉘앙스를 담아 번역합니다.</p>
+                </div>
+                <div class="trans-panels">
+                    <div class="trans-panel">
+                        <label>원문 입력 (의사) <span>한국어 🇰🇷</span></label>
+                        <textarea id="transInput" placeholder="알려줄 내용이나 질문을 입력하세요. 예) 오늘은 바로 입원해서 수액을 맞고 피검사를 하셔야 합니다."></textarea>
+                    </div>
+                    <div class="trans-panel" style="background:#f0fdf4; border-color:#bbf7d0;">
+                        <label>번역 결과 
+                            <select id="transTargetLang" style="border:none;background:transparent;font-weight:bold;outline:none;cursor:pointer;">
+                                <option value="영어">영어 🇺🇸</option>
+                                <option value="러시아어">러시아어 🇷🇺</option>
+                                <option value="중국어">중국어 🇨🇳</option>
+                                <option value="베트남어">베트남어 🇻🇳</option>
+                            </select>
+                        </label>
+                        <textarea id="transOutput" readonly placeholder="번역 결과가 이 곳에 표시됩니다." style="color:#065f46;"></textarea>
+                    </div>
+                </div>
+                <div class="trans-controls">
+                    <button class="trans-action-btn" id="doTranslateBtn"><i class="fa-solid fa-language"></i> 의학 번역 실행</button>
+                </div>
+                <div id="transNoteAlert" style="display:none; padding:15px; border-radius:8px; background:#fff7ed; border-left:4px solid #f97316; margin-top:20px; font-size:0.9rem;">
+                </div>
+            </div>
+        </div>
+
+        <div class="input-dock-wrapper">
+            <div class="input-dock" id="inputDock">
+                <div class="toggles">
+                    <button class="depth-btn active" data-depth="deep">Deep Search</button>
+                    <button class="depth-btn" data-depth="quick">Quick Res</button>
+                </div>
+
+                <div class="preview-bar hidden" id="imagePreviewContainer">
+                    <div class="img-preview-box">
+                        <img id="imagePreview" src="" alt="첨부">
+                        <button class="close-btn" id="removeImageBtn"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                </div>
+
+                <div class="input-row">
+                    <div class="attach-grp">
+                        <button class="icon-btn" onclick="document.getElementById('imageUpload').click()" title="이미지 첨부"><i class="fa-regular fa-image"></i></button>
+                        <button class="icon-btn" onclick="document.getElementById('ragUpload').click()" title="환자 파일/논문 첨부(txt)"><i class="fa-solid fa-paperclip"></i></button>
+                    </div>
+                    <textarea id="searchInput" rows="1" placeholder="의학적 질문이나 파일 판독을 요청하세요..."></textarea>
+                    <button class="send-btn" id="searchBtn"><i class="fa-solid fa-arrow-up"></i></button>
+                </div>
+            </div>
+            <div class="toolbar-bottom">
+                MedAssist Pro는 참고용 임상 보조 도구입니다. 최종 판단은 담당 의사에게 있습니다. <span id="ragFileName" class="hidden" style="color:var(--accent)"></span>
+            </div>
+        </div>
+    </main>
+
+    <input type="file" id="imageUpload" accept="image/*" class="hidden">
+    <input type="file" id="ragUpload" accept=".txt,.csv,.md" class="hidden">
+
+    <!-- app.js의 구버전 의존성을 맞추기 위해 보이지 않는 더미 엘리먼트 유지 (에러 방지용) -->
+    <div id="authOverlay" class="hidden"></div>
+    <div id="loadingIndicator" class="hidden loading-indicator"><div class="welcome-logo" style="width:30px;height:30px;font-size:12px;margin:0;"><i class="fa-solid fa-user-doctor"></i></div> 전문의 분석 중<span class="loading-dots"></span></div>
+    <div id="libraryView" class="hidden"></div>
+    <div id="libraryGrid" class="hidden"></div>
+    <div id="modeDesc-header" class="hidden"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
