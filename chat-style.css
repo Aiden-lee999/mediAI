@@ -64,15 +64,15 @@ body { background: var(--bg-main); color: var(--text-main); display: flex; heigh
 .suggestion-btn:hover { background: var(--bg-sec); color: var(--text-main); }
 
 /* Chat Container */
-.chat-flow-container { max-width: 800px; margin: 0 auto; width: 100%; padding: 2rem 1.5rem 6rem; display: flex; flex-direction: column; gap: 2rem; }
+.chat-flow-container { max-width: 800px; margin: 0 auto; width: 100%; padding: 2rem 1.5rem 10rem; display: flex; flex-direction: column; gap: 2rem; }
 .hidden { display: none !important; }
 
 /* Bubbles */
 .msg-wrapper { display: flex; width: 100%; }
-.user-msg { justify-content: flex-end; }
-.ai-msg { justify-content: flex-start; }
+.user-msg { justify-content: flex-end; margin-bottom: 10px; }
+.ai-msg { justify-content: flex-start; margin-bottom: 20px; padding-bottom: 20px; }
 
-.user-bubble { background: var(--user-bubble); color: var(--text-main); padding: 6px 12px; border-radius: 16px; max-width: 75%; width: max-content; align-self: flex-end; display: inline-block; word-break: break-word; font-size: 1rem; line-height: 1.4; white-space: pre-wrap; margin: 0; }
+.user-bubble { background: transparent; color: var(--text-main); padding: 0; max-width: 75%; width: max-content; align-self: flex-end; display: inline-block; word-break: break-word; font-size: 1rem; line-height: 1.5; white-space: pre-wrap; text-align: left; }
 .user-img { width: 100%; max-width: 300px; border-radius: 12px; margin-top: 10px; border: 1px solid var(--border); }
 
 .ai-bubble { width: 100%; max-width: 800px; display: flex; gap: 16px; font-size: 1rem; line-height: 1.6; }
