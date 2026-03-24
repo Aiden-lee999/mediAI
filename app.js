@@ -374,7 +374,7 @@ function appendAIMessage(data) {
                 <div style="background:#f8fafc; border:1px solid #cbd5e1; padding:15px; border-radius:10px; margin-bottom:12px;">
                     <h3 style="color:#475569; font-size:0.95rem; margin-bottom:10px;"><i class="fa-solid fa-comments"></i> 의사 의견 <span style="background:#ef4444; color:white; font-size:0.7rem; padding:2px 6px; border-radius:4px; margin-left:5px;">참고용</span></h3>
                     ${opinionsHtml}
-                    <button style="width:100%; border:1px dashed #94a3b8; background:transparent; padding:8px; border-radius:6px; color:#475569; margin-top:5px; cursor:pointer;" onclick="alert('의견 남기기 기능이 곧 오픈됩니다.')">+ 내 의견 남기기</button>
+                    <button style="width:100%; border:1px dashed #94a3b8; background:transparent; padding:8px; border-radius:6px; color:#475569; margin-top:5px; cursor:pointer;" onclick="openOpinionModal(Date.now().toString())">+ 내 의견 남기기</button>
                 </div>
             `;
         } else if (type === 'insurance_warning') {
@@ -480,7 +480,7 @@ function appendAIMessage(data) {
                     <div style="flex:1;"></div>
                     <button style="border:1px solid #bbf7d0; background:#f0fdf4; padding:6px 12px; border-radius:15px; font-size:0.8rem; cursor:pointer; color:#166534;" onclick="this.innerHTML='<i class=\\'fa-solid fa-thumbs-up\\'></i> 좋아요 반영됨'"><i class="fa-regular fa-thumbs-up"></i> 좋아요</button>
                     <button style="border:1px solid #fecdd3; background:#fff1f2; padding:6px 12px; border-radius:15px; font-size:0.8rem; cursor:pointer; color:#be123c;" onclick="this.innerHTML='<i class=\\'fa-solid fa-thumbs-down\\'></i> 싫어요 반영됨'"><i class="fa-regular fa-thumbs-down"></i> 싫어요</button>
-                    <button style="border:none; background:var(--primary); padding:6px 15px; border-radius:15px; font-size:0.8rem; cursor:pointer; color:white; font-weight:bold;" onclick="alert('의견 남기기 창이 열립니다.')"><i class="fa-solid fa-comment-medical"></i> 내 의견 남기기</button>
+                    <button style="border:none; background:var(--primary); padding:6px 15px; border-radius:15px; font-size:0.8rem; cursor:pointer; color:white; font-weight:bold;" onclick="openOpinionModal(Date.now().toString())"><i class="fa-solid fa-comment-medical"></i> 내 의견 남기기</button>
                 </div>
             </div>
         </div>
