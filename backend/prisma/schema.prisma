@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        Int       @id @default(autoincrement())
+  license   String    @unique
+  password  String
+  name      String
+  specialty String
+  sessions  Session[]
+  opinions  Opinion[]
+}
+
+model Session {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  title     String
+  createdAt DateTime  @default(now())
+  messages  Message[]
+  user      User      @relation(fields: [userId], references: [id])
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  sessionId Int
+  role      String
+  content   String
+  blocks    String   @default("[]") // JSON string
+  createdAt DateTime @default(now())
+  session   Session  @relation(fields: [sessionId], references: [id])
+}
+
+model Opinion {
+  id        Int      @id @default(autoincrement())
+  blockId   String
+  userId    Int
+  vote      Int      // 1 or -1
+  comment   String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+

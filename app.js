@@ -35,13 +35,21 @@ const saveLibraryBtn = document.getElementById('saveLibraryBtn');
 // Login Logic
 if(doLoginBtn) {
     doLoginBtn.addEventListener('click', () => {
-        const docName = document.getElementById('docName').value || '원장';
-        const docSpec = document.getElementById('docSpecialty').value || '일반의';
+        const nameEl = document.getElementById('docName') || document.getElementById('licenseNum');
+        const docName = (nameEl ? nameEl.value : '') || '원장';
         
-        docNameDisplay.innerText = `${docName} 원장님 (${docSpec})`;
+        const specEl = document.getElementById('docSpecialty') || document.getElementById('specialtySelect');
+        const docSpec = (specEl ? specEl.value : '') || '일반의';
+        
+        if (docNameDisplay) {
+            docNameDisplay.innerText = `${docName} 원장님 (${docSpec})`;
+        }
         setupSuggestions(docSpec);
         
         loginOverlay.style.display = 'none';
+        
+        // Add fake user avatar or auth token logic visually
+        alert(`로그인 성공:\n전문의 모드로 전환되었습니다.\n[인가된 과목: ${docSpec}]`);
     });
 }
 
