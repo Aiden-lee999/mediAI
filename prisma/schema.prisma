@@ -1,0 +1,25 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Opinion {
+  id        String   @id @default(uuid())
+  sessionId String?
+  messageId String?
+  content   String
+  doctorId  String?
+  createdAt DateTime @default(now())
+}
+
+model Feedback {
+  id        String   @id @default(uuid())
+  sessionId String?
+  messageId String?
+  type      String
+  doctorId  String?
+  createdAt DateTime @default(now())
+}

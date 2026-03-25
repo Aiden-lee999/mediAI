@@ -8,11 +8,49 @@ function MessageBubble({ msg }: { msg: any }) {
   const [opinionText, setOpinionText] = useState("");
   const [feedback, setFeedback] = useState<'like'|'dislike'|null>(null);
 
-  const handleOpinionSubmit = () => {
+  const handleOpinionSubmit = async () => {
     if(!opinionText.trim()) return;
-    alert('원장님의 소견이 집단 지성 DB에 안전하게 등록되었습니다.');
-    setOpinionText('');
-    setIsOpinionOpen(false);
+    
+    try {
+      const res = await fetch('/api/opinion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: msg.session_id || 'unknown',
+          messageId: msg.id,
+          content: opinionText,
+          doctorId: 'Dr. Kim' // Mock doctor ID
+        })
+      });
+      if (res.ok) {
+        alert('원장님의 소견이 집단 지성 DB에 안전하게 등록되었습니다.');
+        setOpinionText('');
+        setIsOpinionOpen(false);
+      } else {
+        alert('등록 중 오류가 발생했습니다.');
+      }
+    } catch(err) {
+      alert('등록 중 오류가 발생했습니다.');
+    }
+  };
+
+  const submitFeedback = async (newFeedback: 'like' | 'dislike' | null) => {
+    setFeedback(newFeedback);
+    if (!newFeedback) return;
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: msg.session_id || 'unknown',
+          messageId: msg.id,
+          type: newFeedback,
+          doctorId: 'Dr. Kim'
+        })
+      });
+    } catch(err) {
+      console.error(err);
+    }
   };
 
   return (
@@ -75,11 +113,11 @@ function MessageBubble({ msg }: { msg: any }) {
               </button>
               <div className="flex items-center bg-gray-50 rounded-full border border-gray-200 overflow-hidden">
                 <button 
-                  onClick={() => setFeedback(feedback === 'like' ? null : 'like')}
+                  onClick={() => submitFeedback(feedback === 'like' ? null : 'like')}
                   className={`px-3 py-1.5 text-xs transition-colors border-r border-gray-200 hover:bg-gray-100 ${feedback === 'like' ? 'bg-blue-100 text-blue-600 font-bold' : 'text-gray-500'}`}
                 >👍 유용함</button>
                 <button 
-                  onClick={() => setFeedback(feedback === 'dislike' ? null : 'dislike')}
+                  onClick={() => submitFeedback(feedback === 'dislike' ? null : 'dislike')}
                   className={`px-3 py-1.5 text-xs transition-colors hover:bg-gray-100 ${feedback === 'dislike' ? 'bg-red-100 text-red-600 font-bold' : 'text-gray-500'}`}
                 >👎 아님</button>
               </div>
