@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import ReviewManager from './ReviewManager';
 
 export default function AdminPage() {
   return (
@@ -56,33 +57,7 @@ export default function AdminPage() {
               미검수 항목 일괄 처리
             </button>
           </div>
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-gray-200 text-gray-500 text-sm">
-                <th className="pb-3 font-medium">답변 버전</th>
-                <th className="pb-3 font-medium">주요 내용 (요약)</th>
-                <th className="pb-3 font-medium">검수자</th>
-                <th className="pb-3 font-medium">상태</th>
-                <th className="pb-3 font-medium">액션</th>
-              </tr>
-            </thead>
-            <tbody className="text-sm">
-              <tr className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="py-4 font-mono text-gray-500">v1.2.4</td>
-                <td className="py-4 font-semibold max-w-xs truncate">"A약제와 B약제 병용 시 신장 기능 저하 환자 주의..." (피드백: 출처 상세 추가 요망)</td>
-                <td className="py-4">김의사 (순환기내과)</td>
-                <td className="py-4"><span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-bold">검수 대기</span></td>
-                <td className="py-4"><button className="text-blue-600 hover:underline font-medium">검수 / 반려</button></td>
-              </tr>
-              <tr className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="py-4 font-mono text-gray-500">v1.2.3</td>
-                <td className="py-4 font-semibold max-w-xs truncate">원내 항생제 처방 가이드라인 개정 사항 반영 (24년 3월 기준)</td>
-                <td className="py-4">이약사 (약제팀)</td>
-                <td className="py-4"><span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">승인 완료</span></td>
-                <td className="py-4"><button className="text-gray-400 hover:text-gray-600 font-medium">이력 보기</button></td>
-              </tr>
-            </tbody>
-          </table>
+          <ReviewManager />
         </section>
 
         {/* 3. 권한 세분화 & 병원별 지식베이스/외부 데이터 연동 */}

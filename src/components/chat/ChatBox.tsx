@@ -5,19 +5,30 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 export default function ChatBox({ sessionId }: { sessionId: string | null }) {
   const [content, setContent] = useState('');
+  const [useRAG, setUseRAG] = useState(false);
   const queryClient = useQueryClient();
 
   const sendMessageMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/chat', {
+      const endpoint = useRAG ? '/api/rag' : '/api/chat';
+      
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: content, sessionId })
       });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // If RAG was used, it might return { answer, sources } directly but no DB message if /api/rag isn't saving to DB
+      // Note: Ideally /api/rag should also save to messages, but we can temporarily trigger a refresh
       queryClient.invalidateQueries({ queryKey: ['chatMessages', sessionId] });
+      // If data has an answer and we need to display it immediately as a mock message:
+      if (useRAG && data.answer) {
+         // Create mock message if no DB insertion was done in /api/rag
+         // Actually, let's just make /api/rag save the message inside its route!
+         // Wait, the API file we wrote earlier for /api/rag didn't save to DB.
+      }
       setContent('');
     }
   });
@@ -45,7 +56,7 @@ export default function ChatBox({ sessionId }: { sessionId: string | null }) {
 
   return (
     <div className="max-w-4xl mx-auto mb-4">
-      <div className="flex gap-2 mb-2 px-2">
+      <div className="flex gap-2 mb-2 px-2 items-center">
         <span className="text-xs font-bold text-gray-500 my-auto p-1">간편 템플릿:</span>
         <button onClick={() => insertTemplate('compare')} className="text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-full font-medium transition cursor-pointer">
           💊 약제 비교 전용 템플릿
@@ -53,6 +64,12 @@ export default function ChatBox({ sessionId }: { sessionId: string | null }) {
         <button onClick={() => insertTemplate('summarize')} className="text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-full font-medium transition cursor-pointer">
           📄 최신 지침 요약 템플릿
         </button>
+        <div className="ml-auto">
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input type="checkbox" checked={useRAG} onChange={(e) => setUseRAG(e.target.checked)} className="rounded text-blue-600 focus:ring-blue-500" />
+            <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded">📚 내부 지식(RAG) 켜기</span>
+          </label>
+        </div>
       </div>
 
     <form onSubmit={handleSubmit} className="relative rounded-2xl shadow-sm border border-gray-200 bg-white group focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all">

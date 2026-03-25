@@ -1,8 +1,23 @@
 import { NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export async function POST(request: Request) {
   try {
-    const { query } = await request.json();
+    const { query, sessionId } = await request.json();
+
+    // 1. 유저 메시지 저장
+    let userMessage = null;
+    if (sessionId) {
+      userMessage = await prisma.message.create({
+        data: {
+          conversationId: sessionId,
+          role: 'user',
+          content: query,
+        }
+      });
+    }
 
     // Mock RAG processing delay
     await new Promise(resolve => setTimeout(resolve, 800));
@@ -25,12 +40,37 @@ export async function POST(request: Request) {
       }
     ];
 
+    const answerContent = `(RAG 병원 내부지식 기반 답변) 요청하신 "${query}"에 대한 RAG 분석 결과입니다. \n\n[출처 1] ${mockSources[0].title}: ${mockSources[0].snippet}\n[출처 2] ${mockSources[1].title}: ${mockSources[1].snippet}`;
+
+    // 2. 어시스턴트 메시지 저장
+    let assistantMessage = null;
+    if (sessionId) {
+      assistantMessage = await prisma.message.create({
+        data: {
+          conversationId: sessionId,
+          role: 'assistant',
+          content: answerContent,
+        }
+      });
+
+      // 3. ReviewWorkflow 에 자동 등록 (RAG 답변은 검수가 필요하다고 가정)
+      await prisma.reviewWorkflow.create({
+        data: {
+          messageId: assistantMessage.id,
+          status: 'PENDING',
+          version: 'v1.0 (RAG)',
+        }
+      });
+    }
+
     return NextResponse.json({
-      answer: `요청하신 "${query}"에 대한 RAG 분석 결과입니다. 첨부된 레퍼런스를 참조해주시기 바랍니다.`,
+      answer: answerContent,
       sources: mockSources,
     });
     
   } catch (error) {
+    console.error('RAG Error', error);
     return NextResponse.json({ error: 'Failed to process RAG query' }, { status: 500 });
   }
 }
+
