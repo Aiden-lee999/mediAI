@@ -16,8 +16,8 @@ function MessageBubble({ msg }: { msg: any }) {
   };
 
   return (
-    <div className={"flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}"}>
-      <div className={"max-w-[85%] rounded-2xl p-4 ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'w-full text-gray-800 bg-white/50 border border-gray-100 shadow-sm'}"}>
+    <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+      <div className={`max-w-[85%] rounded-2xl p-4 ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'w-full text-gray-800 bg-white/50 border border-gray-100 shadow-sm'}`}>
         {msg.role === 'user' ? (
           <p>{msg.content}</p>
         ) : (
@@ -76,11 +76,11 @@ function MessageBubble({ msg }: { msg: any }) {
               <div className="flex items-center bg-gray-50 rounded-full border border-gray-200 overflow-hidden">
                 <button 
                   onClick={() => setFeedback(feedback === 'like' ? null : 'like')}
-                  className={"px-3 py-1.5 text-xs transition-colors border-r border-gray-200 hover:bg-gray-100 ${feedback === 'like' ? 'bg-blue-100 text-blue-600 font-bold' : 'text-gray-500'}"}
+                  className={`px-3 py-1.5 text-xs transition-colors border-r border-gray-200 hover:bg-gray-100 ${feedback === 'like' ? 'bg-blue-100 text-blue-600 font-bold' : 'text-gray-500'}`}
                 >👍 유용함</button>
                 <button 
                   onClick={() => setFeedback(feedback === 'dislike' ? null : 'dislike')}
-                  className={"px-3 py-1.5 text-xs transition-colors hover:bg-gray-100 ${feedback === 'dislike' ? 'bg-red-100 text-red-600 font-bold' : 'text-gray-500'}"}
+                  className={`px-3 py-1.5 text-xs transition-colors hover:bg-gray-100 ${feedback === 'dislike' ? 'bg-red-100 text-red-600 font-bold' : 'text-gray-500'}`}
                 >👎 아님</button>
               </div>
             </div>
@@ -147,7 +147,7 @@ export default function ChatThread({ sessionId }: { sessionId: string | null }) 
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20 pt-4">
-      {currentMessages.map((msg) => (
+      {currentMessages.map((msg: any) => (
         <MessageBubble key={msg.id} msg={msg} />
       ))}
     </div>

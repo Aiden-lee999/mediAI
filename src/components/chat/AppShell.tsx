@@ -35,11 +35,11 @@ export default function AppShell() {
           </button>
 
           <div className="text-xs font-bold text-gray-400 mb-2 mt-4 ml-1 uppercase tracking-wider">최근 세션</div>
-          {sessions?.map(s => (
+          {sessions?.map((s: any) => (
             <button
               key={s.session_id}
               onClick={() => setActiveSessionId(s.session_id)}
-              className={"w-full text-left p-3 rounded-lg cursor-pointer text-sm font-medium truncate transition-colors ${activeSessionId === s.session_id ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'text-gray-600 hover:bg-gray-100 border border-transparent'}"}
+              className={`w-full text-left p-3 rounded-lg cursor-pointer text-sm font-medium truncate transition-colors ${activeSessionId === s.session_id ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'text-gray-600 hover:bg-gray-100 border border-transparent'}`}
             >
               💬 {s.title}
             </button>
