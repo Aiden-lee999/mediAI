@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedAssist - 의사 전용 통합 지원 AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div id="authOverlay" class="auth-overlay">
+        <div class="auth-box">
+            <h2><i class="fa-solid fa-user-doctor"></i> MedAssist Pro</h2>
+            <p>의료 전문가 전용 플랫폼입니다. 면허 인증을 진행해주세요.</p>
+            <input type="text" placeholder="의사면허번호" class="auth-input">
+            <input type="email" placeholder="병원 이메일 (예: @amc.seoul.kr)" class="auth-input">
+            <select class="auth-input">
+                <option>내과</option>
+                <option>소아청소년과</option>
+                <option>외과</option>
+                <option>기타</option>
+            </select>
+            <button id="loginBtn" class="auth-btn">인증 및 로그인</button>
+            <p class="auth-notice">인증된 U.S./국내 HCPs(Healthcare Professionals)만 이용 가능한 철저한 근거 기반 어시스턴트입니다.</p>
+        </div>
+    </div>
+    <div class="dashboard-wrapper">
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fa-solid fa-user-doctor"></i>
+                <span>MedAssist Pro</span>
+            </div>
+            
+            <button class="new-chat-btn" id="newChatBtn">
+                <i class="fa-solid fa-plus"></i> 새로운 어시스트
+            </button>
+
+            <div class="nav-title">메뉴</div>
+            <nav class="menu">
+                <a href="#" class="nav-link" data-mode="library" id="navLibrary">
+                    <i class="fa-solid fa-bookmark"></i> 내 라이브러리
+                </a>
+            </nav>
+
+            <div class="recent-history-section">
+                <div class="nav-title">최근 기록</div>
+                <div id="sidebarHistoryList" class="sidebar-history-list">
+                    <!-- JS에서 생성 -->
+                </div>
+            </div>
+
+            <div class="sponsor-zone">
+                <div class="sponsor-badge">Sponsored Medical Update</div>
+                <div class="ad-text">새로운 2형 성인 당뇨병 치료제 <b>포시가</b>. 학회 가이드라인 및 최신 임상 데이터를 확인하세요.</div>
+                <button class="ad-btn">학술 세션 보기</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="top-header">
+                <div>
+                    <h1 id="modeTitle">통합 의료 어시스턴트</h1>
+                    <p id="modeDesc-header">진료, 논문, 영상/결과지 분석 등 든든한 서포터입니다.</p>
+                </div>
+            </header>
+
+            <div class="content-scroll-area" id="scrollArea">
+                <div id="welcomeView" class="welcome-view">
+                    <div style="text-align:center; margin-bottom: 2rem;">
+                        <div style="background:var(--primary); color:#fff; width:64px; height:64px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:2rem; margin-bottom:1rem;">
+                            <i class="fa-solid fa-user-doctor"></i>
+                        </div>
+                        <h2 class="welcome-title">무엇을 도와드릴까요, 원장님?</h2>
+                        <p style="color:var(--text-light)">임상 진료 보조, 최신 논문 검색, 약물 상호작용 검토 및 다중 턴 대화가 가능합니다.</p>
+                    </div>
+                </div>
+
+                <div id="chatFlowContainer" class="chat-flow-container hidden">
+                    <!-- 대화가 여기에 지속적으로 쌓입니다 -->
+                </div>
+
+                <div class="loading-state hidden" id="loadingIndicator" style="text-align:center; padding:1rem;">
+                    <div class="spinner"></div>
+                    <p>전문 의학 데이터 및 최신 지침을 기반으로 분석 중...</p>
+                </div>
+
+                <div id="libraryView" class="welcome-view hidden">
+                    <h2 class="welcome-title">내 라이브러리 (저장됨)</h2>
+                    <p style="color: var(--text-light); margin-bottom: 2rem;">중요한 레퍼런스, 증례 기록, 환자 스크립트를 빠르게 확인하세요.</p>
+                    <div id="libraryGrid" class="cards-layout"></div>
+                </div>
+
+            </div>
+
+            <div class="input-dock">
+                <div id="imagePreviewContainer" class="image-preview-wrapper hidden">
+                    <div class="preview-box">
+                        <img id="imagePreview" src="" alt="첨부">
+                        <button class="remove-btn" id="removeImageBtn"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <span class="preview-text">사진/결과지 첨부됨</span>
+                </div>
+                <div class="search-box-wrapper">
+                    <label for="imageUpload" class="icon-action-btn"><i class="fa-solid fa-paperclip"></i></label>
+                    <input type="file" id="imageUpload" accept="image/*" class="hidden">
+                    <input type="text" id="searchInput" placeholder="원장님이 궁금하신 임상 자료나 질문을 자유롭게 입력해 주세요." autocomplete="off">
+                    <button id="searchBtn" class="send-action-btn"><i class="fa-solid fa-arrow-up"></i></button>
+                </div>
+                <div style="text-align: right; margin-top: 0.5rem; margin-bottom: 0.5rem; width:100%; max-width:800px;">
+                     <button id="saveLibraryBtn" class="library-save-btn hidden"><i class="fa-regular fa-bookmark"></i> 이 결과 라이브러리에 저장</button>
+                </div>
+                <div class="depth-toggle">
+                    <button class="depth-btn active" data-depth="deep">Deep Answer (상세분석)</button>
+                    <button class="depth-btn" data-depth="quick">QC (Quick Answer)</button>
+                    <label for="ragUpload" class="rag-btn"><i class="fa-solid fa-file-medical"></i> 원내 프로토콜 첨부 (RAG)</label>
+                    <input type="file" id="ragUpload" accept=".txt,.json,.md,.csv" class="hidden">
+                    <span id="ragFileName" style="font-size:0.75rem; color:#10b981; font-weight:bold; margin-left:0.5rem;" class="hidden"></span>
+                </div>
+                <div class="safety-warning"><i class="fa-solid fa-circle-exclamation"></i> 주의: 본 AI는 진료 보조 도구입니다. 복잡한 고난도 케이스의 경우 반드시 원문 출처(Reference)를 확인하시고, 고위험 약물/항암제 처방 등의 최종 판단은 언제나 의료진의 책임 하에 진행되어야 합니다. 모르는 것은 모른다고 명시합니다.</div>
+                <p class="disclaimer-text">MedAssist는 객관적 임상 판단을 돕는 '보조 도구'로써 확정적 진단을 대체할 수 없습니다. 처방 및 진료는 의료진의 최종 판단 하에 진행되어야 합니다.</p>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -4,22 +4,156 @@ generator client {
 
 datasource db {
   provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
-model Opinion {
-  id        String   @id @default(uuid())
-  sessionId String?
-  messageId String?
-  content   String
-  doctorId  String?
-  createdAt DateTime @default(now())
+model Hospital {
+  id          String       @id @default(uuid())
+  name        String
+  type        String?
+  region      String?
+  status      String       @default("ACTIVE")
+  users       User[]
+  departments Department[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Department {
+  id         String   @id @default(uuid())
+  hospitalId String
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+  name       String
+  users      User[]
+}
+
+model User {
+  id            String             @id @default(uuid())
+  email         String             @unique
+  passwordHash  String
+  name          String
+  role          String             @default("DOCTOR")
+  title         String?
+  status        String             @default("PENDING")
+  hospitalId    String?
+  hospital      Hospital?          @relation(fields: [hospitalId], references: [id])
+  departmentId  String?
+  department    Department?        @relation(fields: [departmentId], references: [id])
+  conversations Conversation[]
+  feedbacks     Feedback[]
+  documents     UploadedDocument[]
+  bookmarks     Bookmark[]
+  reviews       ReviewWorkflow[]   @relation("Reviewer")
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+}
+
+model Conversation {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  title     String
+  category  String?
+  messages  Message[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Message {
+  id              String            @id @default(uuid())
+  conversationId  String
+  conversation    Conversation      @relation(fields: [conversationId], references: [id])
+  role            String
+  content         String
+  messageType     String?
+  parentMessageId String?
+  parentMessage   Message?          @relation("MessageHistory", fields: [parentMessageId], references: [id])
+  childMessages   Message[]         @relation("MessageHistory")
+  sources         SourceReference[]
+  feedbacks       Feedback[]
+  bookmarks       Bookmark[]
+  tags            MessageTag[]
+  reviewWorkflow  ReviewWorkflow?
+  insightSummary  InsightSummary?
+  createdAt       DateTime          @default(now())
+}
+
+model SourceReference {
+  id            String   @id @default(uuid())
+  messageId     String
+  message       Message  @relation(fields: [messageId], references: [id])
+  sourceType    String
+  sourceTitle   String
+  sourceUrlOrId String?
+  snippet       String?
+  rank          Int?
+  createdAt     DateTime @default(now())
 }
 
 model Feedback {
+  id           String   @id @default(uuid())
+  messageId    String
+  message      Message  @relation(fields: [messageId], references: [id])
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  feedbackType String
+  comment      String?
+  createdAt    DateTime @default(now())
+}
+
+model InsightSummary {
+  id                 String   @id @default(uuid())
+  messageId          String   @unique
+  message            Message  @relation(fields: [messageId], references: [id])
+  summaryText        String
+  consensusPoints    String
+  disagreementPoints String
+  pendingChecks      String
+  updatedAt          DateTime @updatedAt
+}
+
+model UploadedDocument {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  fileName    String
+  fileType    String?
+  storagePath String
+  parsedText  String?
+  status      String   @default("UPLOADING")
+  createdAt   DateTime @default(now())
+}
+
+model Bookmark {
   id        String   @id @default(uuid())
-  sessionId String?
-  messageId String?
-  type      String
-  doctorId  String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id])
   createdAt DateTime @default(now())
+
+  @@unique([userId, messageId])
+}
+
+model MessageTag {
+  id        String   @id @default(uuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id])
+  tag       String
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, tag])
+}
+
+model ReviewWorkflow {
+  id           String   @id @default(uuid())
+  messageId    String   @unique
+  message      Message  @relation(fields: [messageId], references: [id])
+  reviewerId   String?
+  reviewer     User?    @relation("Reviewer", fields: [reviewerId], references: [id])
+  status       String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  version      String   @default("v1.0")
+  reviewNotes  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

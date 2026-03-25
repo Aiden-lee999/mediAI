@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import BookmarkBtn from './BookmarkBtn';
 
 export default function Messages({ sessionId }: { sessionId: string | null }) {
   const { data: messages, isLoading } = useQuery({
@@ -61,12 +62,7 @@ export default function Messages({ sessionId }: { sessionId: string | null }) {
                     </span>
                  ))}
                  <div className="w-full mt-2 flex justify-end gap-2">
-                    <button className="text-xs flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded text-gray-600 hover:bg-gray-100">
-                      🔖 북마크
-                    </button>
-                    <button className="text-xs flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded text-gray-600 hover:bg-gray-100">
-                      🏷️ 태그 추가
-                    </button>
+                    <BookmarkBtn messageId={msg.id} />
                     <button className="text-xs flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded text-gray-600 hover:bg-gray-100">
                       ✍️ 피드백 남기기
                     </button>
