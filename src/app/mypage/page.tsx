@@ -7,7 +7,7 @@ export default function MyPage() {
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <h1 className="text-2xl font-black">🧑‍⚕️ 마이페이지</h1>
           <nav className="space-x-4">
-            <Link href="/chat" className="hover:text-blue-200 font-medium">챗봇으로 돌아가기</Link>
+            <Link href="/dashboard" className="hover:text-blue-200 font-medium">대시보드로 돌아가기</Link>
           </nav>
         </div>
       </header>

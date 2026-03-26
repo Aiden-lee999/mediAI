@@ -377,6 +377,9 @@ export default function DashboardPage() {
            <button onClick={() => {setView('library'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='library'?'bg-slate-800 text-white':''}`}>
                내 라이브러리
            </button>
+           <button onClick={() => window.location.href = '/mypage'} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 text-blue-300 mt-4 border border-slate-700`}>
+               👤 마이페이지 및 설정
+           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
