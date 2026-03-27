@@ -93,7 +93,7 @@ JSON 뼈대:
     const reply = response.choices[0].message.content || "{}";
     const parsed = JSON.parse(reply);
 
-    res.json({ reply: parsed });
+    res.json(parsed);
   } catch (error: any) {
     console.error("OpenAI Route Error:", error);
     res.status(500).json({ error: error.message });
