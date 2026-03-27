@@ -5,22 +5,43 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 // ==========================================
 // 1. 하위 컴포넌트: 인터랙티브 약물 정렬 테이블
 // ==========================================
-function SortableDrugTable({ initialDrugs }: { initialDrugs: any[] }) {
-  const [drugs, setDrugs] = useState([...initialDrugs]);
-  const [sortCol, setSortCol] = useState<string | null>(null);
-  const [isAsc, setIsAsc] = useState(true);
+function SortableDrugTable({ initialDrugs }: { initialDrugs: any }) {
+    const [drugs, setDrugs] = useState<any[]>([]);
+    
+    useEffect(() => {
+      if (Array.isArray(initialDrugs)) {
+        setDrugs([...initialDrugs]);
+      } else if (typeof initialDrugs === 'object' && initialDrugs !== null) {
+        // 혹시 객체 형태라면 배열로 변환
+        const vals = Object.values(initialDrugs);
+        if (vals.length > 0 && typeof vals[0] === 'object') {
+           setDrugs(vals as any[]);
+        }
+      }
+    }, [initialDrugs]);
 
-  const handleSort = (col: string) => {
-    const newAsc = sortCol === col ? !isAsc : true;
-    setSortCol(col);
-    setIsAsc(newAsc);
-    const sorted = [...drugs].sort((a, b) => {
-      const valA = String(a[col] || '');
-      const valB = String(b[col] || '');
-      return newAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-    });
-    setDrugs(sorted);
-  };
+    const [sortCol, setSortCol] = useState<string | null>(null);
+    const [isAsc, setIsAsc] = useState(true);
+
+    const handleSort = (col: string) => {
+      const newAsc = sortCol === col ? !isAsc : true;
+      setSortCol(col);
+      setIsAsc(newAsc);
+      const sorted = [...drugs].sort((a, b) => {
+        const valA = String(a[col] || '');
+        const valB = String(b[col] || '');
+        return newAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      });
+      setDrugs(sorted);
+    };
+
+    if (!Array.isArray(drugs) || drugs.length === 0) {
+       return (
+         <div className="p-3 text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded">
+           데이터가 없습니다. (전달된 값: {JSON.stringify(initialDrugs)})
+         </div>
+       );
+    }
 
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 mt-2 bg-white shadow-sm">
