@@ -7,7 +7,7 @@ const openai = new OpenAI({
 
 function determineModel(question: string, hasImage: boolean) {
   if (hasImage) return 'gpt-4o';
-  if (!question || question.length < 50) return 'gpt-4o-mini';
+  if (!question || question.length < 10) return 'gpt-4o-mini';
   return 'gpt-4o';
 }
 
@@ -16,36 +16,39 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { question, history, imageBase64 } = body;
     let modelToUse = determineModel(question || '', !!imageBase64);
-    
-    // 비존재 모델 방어
     modelToUse = modelToUse.replace('gpt-5.4-pro', 'gpt-4o').replace('gpt-5.4-mini', 'gpt-4o-mini').replace('gpt-5.4', 'gpt-4o');
 
     const messages: any[] = [];
     messages.push({
       role: 'system',
-      content: `당신은 매일 수많은 환자를 진료하는 의사를 돕는 전문 의학 어시스턴트입니다.
-프론트엔드 대시보드의 블록 UI를 가장 완벽하게 렌더링하기 위해 반드시 아래의 엄격한 JSON 포맷으로만 응답해주세요. 응답은 무조건 파싱 가능한 유효한 JSON 객체 하나여야 합니다. (마크다운 백틱을 포함하지 마세요)
+      content: \당신은 매일 수많은 환자를 진료하는 의사를 돕는 전문 의학 어시스턴트입니다.
+반드시 아래의 엄격한 JSON 포맷으로만 응답해주세요. 
 
-주의: 약물(예: 고덱스, godex 등) 대체 투여를 묻는 질문에는 다음 8개의 블록을 정확하게 순서대로 배열로 생성해야 합니다:
+주의: 약물(예: 고덱스, godex 등)과 관련된 대체 투여 / 추천 질문에는 무조건 아래 8개의 블록을 예시와 동일한 순서와 블록 타입으로 모두 생성해야 합니다.
 
-1. "textbook" 블록: "1. [약물명]은 무슨 약이다~~" (기능, 효능 등 기본 약물 정보)
-2. "textbook" 블록: "2. [약물명]을 대체하려면 이런 약들이 있다~~" (대체 약물 개념 설명)
-3. "drug_cards" 블록: 대체 약물 리스트 테이블 (반드시 meta_json.drugs 배열에 name, ingredient, price, class, company 속성을 모두 채워 3개 이상의 대체제를 제공)
-4. "textbook" 블록: "3. 가장 많이 팔리는 약 top5"
-5. "textbook" 블록: "4. 가장 수가 비싼 약 top5"
-6. "md_tip" 블록: "처방 팁" (복용법 주의사항 등)
-7. "doctor_consensus" 블록: "의사 집단 반응 요약" (반드시 meta_json에 like_count, dislike_count, feedback_count, summary를 포함)
-8. "journal" 블록: "출처 및 근거 자료"
+1. "textbook" (약물 기본 설명)
+2. "textbook" (대체 옵션 원리)
+3. "drug_cards" (대체 약물 정보 - meta_json.drugs에 반드시 3개 이상 채울 것)
+4. "textbook" (가장 많이 팔리는 약 top5)
+5. "textbook" (가장 수가 비싼 약 top5)
+6. "md_tip" (처방 팁)
+7. "doctor_consensus" (의사 집단 반응)
+8. "journal" (출처 및 근거)
 
-JSON 예시 뼈대:
+JSON 뼈대:
 {
   "intent_type": "drug",
   "orchestration_summary": "수행한 AI 인텔리전스 작업 요약",
-  "chat_reply": "사용자에게 건넬 친절한 일반 텍스트 답변",
+  "chat_reply": "사용자에게 건넬 짧은 안내",
   "blocks": [
-    { "block_type": "textbook", "title": "약물 설명", "body": "내용...", "meta_json": {}, "sort_order": 1 },
-    { "block_type": "textbook", "title": "대체 약물 안내", "body": "대체 옵션...", "meta_json": {}, "sort_order": 2 },
-    { "block_type": "drug_cards", "title": "대체 약물 리스트", "body": "", "meta_json": { "drugs": [ { "name": "우루사정(100mg)", "ingredient": "Ursodeoxycholic acid", "price": "100원(급여)", "class": "전문의약품", "company": "대웅제약" }, {"name": "실리마린", "ingredient": "Silymarin", "price": "비급여", "class": "일반의약품", "company": "알리코제약"} ] }, "sort_order": 3 }
+    { "block_type": "textbook", "title": "1. [약물명] 개요", "body": "기능, 효능 등...", "meta_json": {}, "sort_order": 1 },
+    { "block_type": "textbook", "title": "2. 대체 약물 개념", "body": "대체 약들의 기전...", "meta_json": {}, "sort_order": 2 },
+    { "block_type": "drug_cards", "title": "3. 대체 약물 리스트", "body": "", "meta_json": { "drugs": [ { "name": "우루사정(100mg)", "ingredient": "Ursodeoxycholic acid", "price": "100원(급여)", "class": "전문의약품", "company": "대웅제약" }, {"name": "실리마린", "ingredient": "Silymarin", "price": "비급여", "class": "일반의약품", "company": "알리코제약"}, {"name": "펜넬캡슐", "ingredient": "Biphenyl dimethyl dicarboxylate", "price": "200원", "class": "전문의약품", "company": "파마킹"} ] }, "sort_order": 3 },
+    { "block_type": "textbook", "title": "4. 많이 팔리는 약 Top 5", "body": "1위~5위 목록 형식으로 작성...", "meta_json": {}, "sort_order": 4 },
+    { "block_type": "textbook", "title": "5. 가장 수당이 비싼 약 Top 5", "body": "1위~5위 고가 약 목록...", "meta_json": {}, "sort_order": 5 },
+    { "block_type": "md_tip", "title": "6. 처방 팁 (실무 기준)", "body": "주의사항, 복약 지도 등...", "meta_json": {}, "sort_order": 6 },
+    { "block_type": "doctor_consensus", "title": "7. 의사 집단 반응 요약", "body": "", "meta_json": { "like_count": 8, "dislike_count": 1, "feedback_count": 3, "summary": "위장 장애 시 UDCA 등으로 변경 권장합니다." }, "sort_order": 7 },
+    { "block_type": "journal", "title": "8. 출처 및 근거 자료", "body": "관련 가이드라인 또는 논문명...", "meta_json": {}, "sort_order": 8 }
   ]
 }
 \
@@ -63,7 +66,7 @@ JSON 예시 뼈대:
        messages.push({
           role: 'user',
           content: [
-             { type: 'text', text: question || '이 이미지를 의학적으로 분석해주세요.' },
+             { type: 'text', text: question || '분석해주세요.' },
              { type: 'image_url', image_url: { url: imageBase64 } }
           ]
        });
@@ -83,14 +86,9 @@ JSON 예시 뼈대:
     const parsedResponse = JSON.parse(replyContent || '{}');
 
     return NextResponse.json(parsedResponse);
+
   } catch (error: any) {
-    console.error("OpenAI API 연동 오류:", error.message || error);
-    return NextResponse.json({
-      intent_type: 'general',
-      orchestration_summary: '시스템 안내',
-      chat_reply: '현재 인공지능 서버가 원활하지 않습니다.',
-      blocks: []
-    });
+    console.error("API 연동 오류:", error);
+    return NextResponse.json({ intent_type: 'general', blocks: [] });
   }
 }
-
