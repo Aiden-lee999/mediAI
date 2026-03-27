@@ -346,7 +346,15 @@ export default function DashboardPage() {
       case 'drug_cards':
         return (
           <div key={index} className="mb-3">
-            <div className="text-xs text-slate-500 mb-2">{title || '의학 엔진 검색 반영 (테이블 헤더 클릭 시 정렬 가능)'}</div>
+            <div className="flex justify-between items-center mb-2">
+              <div className="text-xs text-slate-500 font-medium">{title || '의학 엔진 검색 반영 (테이블 헤더 클릭 시 정렬 가능)'}</div>
+              <button 
+                className="text-[11px] text-blue-600 hover:text-blue-800 font-bold px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 transition"
+                onClick={() => alert("관련 약물 전체보기 기능은 준비중입니다.")}
+              >
+                관련 약물 전체보기 ▾
+              </button>
+            </div>
             <SortableDrugTable initialDrugs={meta_json?.drugs || []} />
           </div>
         );
