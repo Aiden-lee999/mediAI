@@ -1,4 +1,4 @@
-'use client';
+ï»¿'use client';
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,7 +7,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [license, setLicense] = useState('');
   const [name, setName] = useState('');
-  const [specialty, setSpecialty] = useState('³»°ú');
+  const [specialty, setSpecialty] = useState('ë‚´ê³¼');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -16,7 +16,6 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      // In commercial build, this communicates with the Express/NestJS backend
       const res = await fetch('/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -24,8 +23,7 @@ export default function LoginPage() {
       });
 
       if (!res.ok) {
-        // Fallback for development if backend isn't up
-        console.warn('Backend connection failed, using dev mock login');
+        console.warn('Backend connection failed, using dev mock login');        
         localStorage.setItem('med_token', 'dev_mock_jwt_token_expert');
         localStorage.setItem('med_user', JSON.stringify({ name, specialty, role: 'doctor' }));
         router.push('/dashboard');
@@ -38,7 +36,6 @@ export default function LoginPage() {
       router.push('/dashboard');
     } catch (err) {
       console.error('Login error:', err);
-      // Fallback
       localStorage.setItem('med_token', 'dev_mock_jwt_token_expert');
       localStorage.setItem('med_user', JSON.stringify({ name, specialty, role: 'doctor' }));
       router.push('/dashboard');
@@ -57,16 +54,16 @@ export default function LoginPage() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">AIMDNET</h1>
-          <p className="text-sm text-slate-500 mt-2">Àü¹®ÀÇ ÀÎÁõ ½Ã½ºÅÛ (»ó¿ëÈ­ ºôµå)</p>
+          <p className="text-sm text-slate-500 mt-2">ì „ë¬¸ì˜ ì¸ì¦ ì‹œìŠ¤í…œ (ìƒìš©í™” ë¹Œë“œ)</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">ÀÇ»ç ¸éÇã ¹øÈ£</label>
-            <input 
-              type="text" 
+            <label className="block text-sm font-medium text-slate-700 mb-1">ì˜ì‚¬ ë©´í—ˆ ë²ˆí˜¸</label>
+            <input
+              type="text"
               className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              placeholder="¸éÇã ¹øÈ£ 5ÀÚ¸®"
+              placeholder="ë©´í—ˆ ë²ˆí˜¸ 5ìë¦¬"
               value={license}
               onChange={(e) => setLicense(e.target.value)}
               required
@@ -74,11 +71,11 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">ºñ¹Ğ¹øÈ£</label>
-            <input 
-              type="password" 
+            <label className="block text-sm font-medium text-slate-700 mb-1">ë¹„ë°€ë²ˆí˜¸</label>
+            <input
+              type="password"
               className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              placeholder="????????"
+              placeholder="ë¹„ë°€ë²ˆí˜¸ ì…ë ¥"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -87,45 +84,44 @@ export default function LoginPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">¼ºÇÔ</label>
-              <input 
-                type="text" 
+              <label className="block text-sm font-medium text-slate-700 mb-1">ì„±í•¨</label>
+              <input
+                type="text"
                 className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                placeholder="È«±æµ¿"
+                placeholder="í™ê¸¸ë™"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Áø·á°ú¸ñ</label>
-              <select 
+              <label className="block text-sm font-medium text-slate-700 mb-1">ì§„ë£Œê³¼ëª©</label>
+              <select
                 className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
                 value={specialty}
                 onChange={(e) => setSpecialty(e.target.value)}
               >
-                <option value="³»°ú">³»°ú</option>
-                <option value="¿Ü°ú">¿Ü°ú</option>
-                <option value="ÇÇºÎ°ú">ÇÇºÎ°ú</option>
-                <option value="ÀÏ¹İÀÇ">ÀÏ¹İÀÇ</option>
+                <option value="ë‚´ê³¼">ë‚´ê³¼</option>
+                <option value="ì™¸ê³¼">ì™¸ê³¼</option>
+                <option value="í”¼ë¶€ê³¼">í”¼ë¶€ê³¼</option>
+                <option value="ì¼ë°˜ì˜">ì¼ë°˜ì˜</option>
               </select>
             </div>
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={isLoading}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors shadow-md shadow-blue-200 mt-4"
           >
-            {isLoading ? 'ÀÎÁõ Áß...' : 'º¸¾È ·Î±×ÀÎ'}
+            {isLoading ? 'ì¸ì¦ ì¤‘...' : 'ë³´ì•ˆ ë¡œê·¸ì¸'}
           </button>
         </form>
-        
+
         <div className="mt-8 text-center text-xs text-slate-400">
-          <p>¨Ï 2026 AIMDNET. All rights reserved.</p>
-          <p className="mt-1">ÀÇ»çÇùÈ¸ SSO ¿¬µ¿ Áö¿ø (SSO ÁØºñÁß)</p>
+          <p> 2026 AIMDNET. All rights reserved.</p>
+          <p className="mt-1">ì˜ì‚¬í˜‘íšŒ SSO ì—°ë™ ì§€ì› (SSO ì¤€ë¹„ì¤‘)</p>
         </div>
       </div>
     </div>
   );
 }
-
