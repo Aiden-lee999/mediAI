@@ -65,7 +65,7 @@ JSON 뼈대:
       history.forEach((msg: any) => {
         let msgContent = msg.content;
         if (msg.role === "assistant" && msg.parsedData) {
-            msgContent = typeof msg.parsedData === "string" ? msg.parsedData : JSON.stringify(msg.parsedData);
+            msgContent = typeof msg.parsedData === "string" ? msg.parsedData : (msg.parsedData.chat_reply || "AI 응답 요약");
         }
         if (msgContent) {
             messages.push({

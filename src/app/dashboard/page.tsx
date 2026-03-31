@@ -251,7 +251,15 @@ export default function DashboardPage() {
           <div key={index} className="bg-white border border-slate-200 p-4 rounded-lg mb-3 shadow-sm">
             <h3 className="font-bold text-slate-800 text-sm mb-2"> Textbook Knowledge (근거 기반 확정 지식)</h3>
             <div className="font-semibold text-sm mb-1">{title}</div>
-            <div className="text-sm text-slate-600" dangerouslySetInnerHTML={{ __html: body?.replace(/\n/g, '<br/>') || '' }} />
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="text-sm text-slate-600 flex-1" dangerouslySetInnerHTML={{ __html: body?.replace(/\n/g, '<br/>') || '' }} />
+              {index === 0 && (
+                <div className="w-full md:w-32 h-32 flex-shrink-0 bg-slate-100 border border-slate-200 rounded-lg flex items-center justify-center flex-col shadow-sm">
+                   <div className="text-xl mb-1">💊</div>
+                   <div className="text-[10px] text-slate-400 font-medium">약물 이미지 (준비중)</div>
+                </div>
+              )}
+            </div>
           </div>
         );
       case 'journal':

@@ -61,7 +61,7 @@ JSON 뼈대:
       history.forEach((msg: any) => {
         let msgContent = msg.content;
         if (msg.role === "assistant" && msg.parsedData) {
-            msgContent = typeof msg.parsedData === "string" ? msg.parsedData : JSON.stringify(msg.parsedData);
+            msgContent = typeof msg.parsedData === "string" ? msg.parsedData : (msg.parsedData.chat_reply || "AI 응답 요약");
         }
         if (msgContent) {
             messages.push({
@@ -193,7 +193,7 @@ JSON 뼈대 (배열 안의 항목 순서는 무조건 1부터 9까지 유지):
   "blocks": [
     { "block_type": "textbook", "title": "1. [질문한 약물명] 개요", "body": "[최소 500자 이상의 깊이 있는 기전 및 효능 설명 작성]", "meta_json": {}, "sort_order": 1 },
     { "block_type": "textbook", "title": "2. 대체 옵션 원리", "body": "[최소 500자 이상의 대체제 계열별 장단점 분석 작성]", "meta_json": {}, "sort_order": 2 },
-    { "block_type": "drug_cards", "title": "3. 대체 약물 리스트", "body": "", "meta_json": { "drugs": [ { "name": "[실제약물명1]", "ingredient": "[성분명1]", "price": "[가격]", "class": "[급여/비급여]", "company": "[제약사]" }, { "name": "[실제약물명2]", "ingredient": "[성분명2]", "price": "[가격]", "class": "[급여/비급여]", "company": "[제약사]" } /* 반드시 10개 이상 작성할 것 */ ] }, "sort_order": 3 },
+    { "block_type": "drug_cards", "title": "3. 대체 약물 리스트", "body": "", "meta_json": { "drugs": [ { "name": "[실제약물명1]", "ingredient": "[성분명1]", "price": "[가격]", "class": "[급여/비급여]", "company": "[제약사]" } , { "name": "[실제약물명2]", "ingredient": "[성분명]", "price": "[가격]", "class": "[급여/비급여]", "company": "[제약사]" } /* 반드시 10개 이상 작성할 것 */ ] }, "sort_order": 3 },
     { "block_type": "textbook", "title": "4. 많이 팔리는 약 Top 5 (전체 시장 기준)", "body": "1위: [실제 약물] (약가: [가격], 구분: [급여/비급여])\n2위: ...", "meta_json": {}, "sort_order": 4 },
     { "block_type": "textbook", "title": "5. 가장 수가 비싼 약 Top 5 (약가 기준)", "body": "1위: [실제 비싼 약물] (약가: [가격], 구분: [급여/비급여])\n...", "meta_json": {}, "sort_order": 5 },
     { "block_type": "textbook", "title": "6. 부작용 및 병용금기(DDI)", "body": "[구체적인 병용금기 제품명과 성분명을 포함한 상세 설명]", "meta_json": {}, "sort_order": 6 },
