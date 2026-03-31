@@ -1,31 +1,6 @@
-﻿import express from 'express';
-import OpenAI from 'openai';
+﻿const fs = require('fs');
 
-const router = express.Router();
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'YOUR_OPENAI_API_KEY',
-});
-
-function determineModel(question: string, hasImage: boolean) {
-  if (hasImage) return 'gpt-4o';
-  // 약제나 복잡한 질문은 무조건 gpt-4o를 타도록 기준을 대폭 낮춤
-  if (!question || question.length < 10) return 'gpt-4o-mini';
-  return 'gpt-4o';
-}
-
-router.post('/ask', async (req, res) => {
-  const { question, history, imageBase64 } = req.body;
-
-  let modelToUse = determineModel(question || '', !!imageBase64);
-  modelToUse = modelToUse.replace('gpt-5.4-pro', 'gpt-4o').replace('gpt-5.4-mini', 'gpt-4o-mini').replace('gpt-5.4', 'gpt-4o');
-
-  try {
-    const messages: any[] = [];
-
-    messages.push({
-      role: 'system',
-      content: `﻿당신은 매일 수많은 환자를 진료하는 의사를 돕는 전문 의학 어시스턴트입니다.
+const NEW_CONTENT = \당신은 매일 수많은 환자를 진료하는 의사를 돕는 전문 의학 어시스턴트입니다.
 반드시 아래의 엄격한 JSON 포맷으로만 응답해주세요.
 
 주의: 약물(예: 고덱스, godex 등)과 관련된 대체 투여 / 추천 질문에는 무조건 아래 9개의 블록을 예시와 동일한 순서와 블록 타입으로 모두 생성해야 합니다.
@@ -48,55 +23,23 @@ JSON 뼈대:
     { "block_type": "textbook", "title": "1. [약물명] 개요", "body": "기능, 효능 등 매우 상세한 전문 내용...", "meta_json": {}, "sort_order": 1 },
     { "block_type": "textbook", "title": "2. 대체 옵션 원리", "body": "대체 약들의 기전 및 종류에 대한 심도 깊은 설명...", "meta_json": {}, "sort_order": 2 },
     { "block_type": "drug_cards", "title": "3. 대체 약물 리스트 (주요 샘플 5~10종)", "body": "", "meta_json": { "drugs": [ { "name": "우루사정(100mg)", "ingredient": "Ursodeoxycholic acid", "price": "100원", "class": "급여/전문의약품", "company": "대웅제약" }, {"name": "실리마린", "ingredient": "Silymarin", "price": "150원", "class": "비급여/일반의약품", "company": "알리코제약"}, {"name": "펜넬캡슐", "ingredient": "Biphenyl dimethyl dicarboxylate", "price": "200원", "class": "급여/전문의약품", "company": "파마킹"} ] }, "sort_order": 3 },
-    { "block_type": "textbook", "title": "4. 많이 팔리는 약 Top 5 (전체 시장 기준)", "body": "1위: 약물명A (약가: OO원, 구분: 급여)\n2위: 약물명B (약가: OO원, 구분: 비급여)...", "meta_json": {}, "sort_order": 4 },
-    { "block_type": "textbook", "title": "5. 가장 수가 비싼 약 Top 5 (전체 시장 기준)", "body": "1위: 약물명C (약가: OO원, 구분: 급여)\n2위: 약물명D (약가: OO원, 구분: 비급여)...", "meta_json": {}, "sort_order": 5 },
+    { "block_type": "textbook", "title": "4. 많이 팔리는 약 Top 5 (전체 시장 기준)", "body": "1위: 약물명A (약가: OO원, 구분: 급여)\\n2위: 약물명B (약가: OO원, 구분: 비급여)...", "meta_json": {}, "sort_order": 4 },
+    { "block_type": "textbook", "title": "5. 가장 수가 비싼 약 Top 5 (전체 시장 기준)", "body": "1위: 약물명C (약가: OO원, 구분: 급여)\\n2위: 약물명D (약가: OO원, 구분: 비급여)...", "meta_json": {}, "sort_order": 5 },
     { "block_type": "textbook", "title": "6. 부작용 및 병용금기(DDI)", "body": "이 약물 처방 시 흔한 부작용은 ~이며, 대표적으로 [특정 약물명A], [특정 성분명B] 등과 병용 투여 금기입니다...", "meta_json": {}, "sort_order": 6 },
     { "block_type": "md_tip", "title": "7. 처방 팁 (실무 기준)", "body": "주의사항, 복약 지도 등...", "meta_json": {}, "sort_order": 7 },
     { "block_type": "doctor_consensus", "title": "8. 의사 집단 반응 요약", "body": "", "meta_json": { "like_count": 8, "dislike_count": 1, "feedback_count": 3, "summary": "위장 장애 시 UDCA 등으로 변경 권장합니다." }, "sort_order": 8 },
-    { "block_type": "journal", "title": "9. 출처 및 근거 자료", "body": "[1] 대한내과학회 XX가이드라인(2023)\n[2] Journal of Medicine, 특정 논문명(2022)...", "meta_json": {}, "sort_order": 9 }
+    { "block_type": "journal", "title": "9. 출처 및 근거 자료", "body": "[1] 대한내과학회 XX가이드라인(2023)\\n[2] Journal of Medicine, 특정 논문명(2022)...", "meta_json": {}, "sort_order": 9 }
   ]
 }
+\;
 
-`
+function replace(filePath) {
+  let file = fs.readFileSync(filePath, 'utf8');
+  let firstPart = file.split('content: \당신은')[0];
+  let secondPart = file.split('  "blocks": [')[1].split(']\n}\n\')[1];
+  let newFile = firstPart + 'content: \' + NEW_CONTENT + '\' + secondPart;
+  fs.writeFileSync(filePath, newFile, 'utf8');
+}
 
-    });
-
-    if (history && Array.isArray(history)) {
-      history.forEach((msg: any) => {
-        messages.push({
-          role: msg.role === "user" ? "user" : "assistant",
-          content: msg.content
-        });
-      });
-    }
-
-    const userMessage: any = { role: "user", content: [] };
-    if (question) {
-      userMessage.content.push({ type: "text", text: question });
-    }
-    if (imageBase64) {
-      userMessage.content.push({
-        type: "image_url",
-        image_url: { url: imageBase64.startsWith("data:") ? imageBase64 : "data:image/jpeg;base64," + imageBase64 }
-      });
-    }
-    if (userMessage.content.length > 0) {
-      messages.push(userMessage);
-    }
-
-    const response = await openai.chat.completions.create({
-      model: modelToUse,
-      messages: messages,
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-    });
-
-    const reply = response.choices[0].message.content || "{}";
-    const parsed = JSON.parse(reply);
-
-    res.json(parsed);
-  } catch (error: any) {
-    console.error("OpenAI Route Error:", error);
-    res.status(500).json({ error: error.message });
-  }
-};
+replace('src/app/api/ask/route.ts');
+replace('backend/src/routes/chatRoutes.ts');
