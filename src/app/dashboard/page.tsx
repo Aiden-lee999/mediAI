@@ -174,6 +174,10 @@ export default function DashboardPage() {
       });
       const data = await res.json();
       
+      if (!res.ok || data.error) {
+         throw new Error(data.error || 'Server error occurred');
+      }
+
       const assistantMsg = { role: 'assistant', parsedData: data };
       const finalizedHistory = [...newHistory, assistantMsg];
       setMessages(finalizedHistory);
@@ -279,20 +283,15 @@ export default function DashboardPage() {
           </div>
         );
       case 'doctor_consensus':
-        return (
-          <div key={index} className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-3 shadow-sm">
-            <h3 className="font-bold text-blue-800 text-sm mb-2"> 의사 집단 반응 요약 (AI 집계)</h3>
-            <div className="flex gap-4 mb-2 text-xs font-medium">
-              <span className="text-green-700"> 좋아요 {meta_json?.like_count || 0}</span>
-              <span className="text-red-700"> 싫어요 {meta_json?.dislike_count || 0}</span>
-              <span className="text-slate-600"> 의견 {meta_json?.feedback_count || 0}</span>
+          return (
+            <div key={index} className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-3 shadow-sm">
+              <h3 className="font-bold text-blue-800 text-sm mb-2"> AI 예측 : 임상 현장 의견 요약</h3>
+              <div className="bg-white p-3 rounded text-sm text-slate-700 border border-blue-100 mt-2">
+                 <strong>AI 분석:</strong> <span dangerouslySetInnerHTML={{ __html: body || meta_json?.summary || '' }} />
+              </div>
             </div>
-            <div className="bg-white p-3 rounded text-sm text-slate-700 border border-blue-100">
-               <strong>합의 요약:</strong> <span dangerouslySetInnerHTML={{ __html: body || meta_json?.summary || '' }} />
-            </div>
-          </div>
-        );
-      case 'doctor_opinion':
+          );
+        case 'doctor_opinion':
         return (
           <div key={index} className="bg-slate-50 border border-slate-300 p-4 rounded-lg mb-3 shadow-sm">
              <h3 className="font-bold text-slate-700 text-sm mb-3"> 의사 의견 <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded ml-1">참고용</span></h3>
