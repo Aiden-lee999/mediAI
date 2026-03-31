@@ -57,8 +57,7 @@ export async function POST(req: Request) {
     });
 
     if (history && Array.isArray(history)) {
-      const pastHistory = history.length > 0 ? history.slice(0, -1) : [];
-      pastHistory.forEach((msg: any) => {
+      history.forEach((msg: any) => {
         let msgContent = msg.content;
         if (msg.role === "assistant" && msg.parsedData) {
           msgContent = typeof msg.parsedData === "string" ? msg.parsedData : (msg.parsedData.chat_reply || "AI 응답 요약");
