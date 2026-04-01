@@ -1,6 +1,8 @@
 ﻿'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // ==========================================
 // 1. 하위 컴포넌트: 인터랙티브 약물 정렬 테이블
