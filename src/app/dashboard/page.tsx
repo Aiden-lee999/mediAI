@@ -160,7 +160,7 @@ export default function DashboardPage() {
     
     const currentQueryPayload = {
       query: targetText || "이미지/임상 분석",
-      summary: "", // Will be filled after AI response
+      summary: "",
       date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString()
     };
 
@@ -174,18 +174,34 @@ export default function DashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: targetText, history: newHistory, imageBase64: userMsg.image })
       });
-      const data = await res.json();
       
-      if (!res.ok || data.error) {
-         throw new Error(data.error || 'Server error occurred');
+      if (!res.ok) { const errBody = await res.text(); throw new Error(Server error occurred:   - ); }
+      
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let text = '';
+      const assistantMsg = { role: 'assistant', parsedData: { chat_reply: '' } };
+      
+      setMessages((prev) => [...prev, assistantMsg]);
+      
+      if (reader) {
+         while (true) {
+           const { done, value } = await reader.read();
+           if (done) break;
+           text += decoder.decode(value, { stream: true });
+           assistantMsg.parsedData.chat_reply = text;
+           setMessages((prev) => {
+             const updated = [...prev];
+             updated[updated.length - 1] = { ...assistantMsg };
+             return updated;
+           });
+         }
       }
 
-      const assistantMsg = { role: 'assistant', parsedData: data };
       const finalizedHistory = [...newHistory, assistantMsg];
-      setMessages(finalizedHistory);
-
+      
       // 세션 저장
-      currentQueryPayload.summary = data.chat_reply;
+      currentQueryPayload.summary = text.substring(0, 30);
       const existingIdx = sessions.findIndex(s => s.id === currentSessionId);
       const newSessions = [...sessions];
       if (existingIdx >= 0) {
@@ -199,11 +215,10 @@ export default function DashboardPage() {
       setSessions(newSessions);
       localStorage.setItem('medSessions', JSON.stringify(newSessions));
       
-      // 최신 결과 페이로드 임시 저장 (라이브러리 추가용)
       (window as any).lastResultPayload = currentQueryPayload;
 
     } catch (error) {
-      setMessages([...newHistory, { role: 'assistant', error: '서버 통신 오류가 발생했습니다.' }]);
+      setMessages([...newHistory, { role: 'assistant', error: '서버 통신 오류가 발생했습니다. (' + String(error) + ')' }]);
     } finally {
       setIsThinking(false);
     }
@@ -526,8 +541,10 @@ export default function DashboardPage() {
                                 )}
                                 
                                 {msg.parsedData?.chat_reply && (
-                                  <div className="text-sm leading-relaxed whitespace-pre-wrap mb-4 font-medium text-slate-800">
-                                    {msg.parsedData.chat_reply}
+                                  <div className="text-sm leading-relaxed whitespace-pre-wrap mb-4 font-medium text-slate-800 break-words prose prose-sm max-w-none">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                      {msg.parsedData.chat_reply}
+                                    </ReactMarkdown>
                                   </div>
                                 )}
                                 
