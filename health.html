@@ -1,0 +1,104 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>약학정보원</title>
+<meta charset="utf-8" />
+<link rel="stylesheet" type="text/css" href="/css/base.css">
+<link rel="stylesheet" type="text/css" href="/css/common.css">
+<link rel="stylesheet" type="text/css" href="/css/sub.css">
+
+<link rel="shortcut icon" href="/include/favicon1.ico" type="image/x-icon" />
+
+<script src="/js/placeholders.min.js"></script>
+ <script src="/js/jquery.min.js"></script>  <!--toggle--> 
+<script src="/js/jquery.isinview.js"></script>
+<!-- <script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.8.1/jquery-ui.min.js"></script> -->
+<script src="/js/1.8.1/jquery-ui.min.js"></script>
+<!-- 
+<link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+
+
+<script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+ -->
+<script type="text/javascript">
+<!--
+// jQuery Draggable with out jQuery UI
+
+
+
+(function($) {
+    $.fn.drags = function(opt) {
+
+        opt = $.extend({handle:"",cursor:"move"}, opt);
+
+        if(opt.handle === "") {
+            var $el = this;
+        } else {
+            var $el = this.find(opt.handle);
+        }
+
+        return $el.css('cursor', opt.cursor).bind("mousedown", function(e) {
+            if(opt.handle === "") {
+                var $drag = $(this).addClass('draggable');
+            } else {
+                var $drag = $(this).addClass('active-handle').parent().addClass('draggable');
+            }
+            var z_idx = $drag.css('z-index'),
+                drg_h = $drag.outerHeight(),
+                drg_w = $drag.outerWidth(),
+                pos_y = $drag.offset().top + drg_h - e.pageY,
+                pos_x = $drag.offset().left + drg_w - e.pageX;
+            $drag.css('z-index', 1000).parents().bind("mousemove", function(e) {
+                $('.draggable').offset({
+                    top:e.pageY + pos_y - drg_h,
+                    left:e.pageX + pos_x - drg_w
+                }).bind("mouseup", function() {
+                    $(this).removeClass('draggable').css('z-index', z_idx);
+                });
+            });
+            e.preventDefault(); // disable selection
+        }).bind("mouseup", function() {
+            if(opt.handle === "") {
+                $(this).removeClass('draggable');
+            } else {
+                $(this).removeClass('active-handle').parent().removeClass('draggable');
+            }
+        });
+
+    }
+})(jQuery);
+//-->
+</script>
+
+<script src="/js/main.js?date=23072501"></script>
+<script src="/js/sub.js"></script>
+
+
+<!-- loading overlay include -->
+<script src="/js/loadingoverlay.min.js"></script>
+<script src="/js/loadingoverlay_progress.min.js"></script>
+<script src="/jquery.bxslider/jquery.bxslider.min.js"></script>
+
+
+<!--
+<script>
+console.log("database connection");
+console.log("");
+</script>
+-->
+
+
+
+
+<!--[if lte IE 8]>
+<script type="text/javascript" src="/js/html5.js"></script>
+<link rel="stylesheet" type="text/css" href="/css/ie8.css">
+<![endif]-->
+
+
+	<script type="text/javascript">alert("요청하신 의약품정보가 없습니다.");history.go(-1);</script>
+	</head><html>
+	
