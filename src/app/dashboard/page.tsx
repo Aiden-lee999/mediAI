@@ -175,7 +175,7 @@ export default function DashboardPage() {
         body: JSON.stringify({ question: targetText, history: newHistory, imageBase64: userMsg.image })
       });
       
-      if (!res.ok) { const errBody = await res.text(); throw new Error(Server error occurred:   - ); }
+      if (!res.ok) { const errBody = await res.text(); throw new Error(`Server error occurred: ${res.status} - ${errBody}`); }
       
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
