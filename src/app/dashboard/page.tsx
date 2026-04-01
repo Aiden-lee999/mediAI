@@ -542,7 +542,22 @@ export default function DashboardPage() {
                                 
                                 {msg.parsedData?.chat_reply && (
                                   <div className="text-sm leading-relaxed whitespace-pre-wrap mb-4 font-medium text-slate-800 break-words prose prose-sm max-w-none">
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    <ReactMarkdown 
+                                      remarkPlugins={[remarkGfm]}
+                                      components={{
+                                        table: ({node, ...props}) => <div className="overflow-x-auto my-4 rounded-lg"><table className="min-w-full border-collapse border border-slate-300 shadow-sm" {...props} /></div>,
+                                        thead: ({node, ...props}) => <thead className="bg-slate-100" {...props} />,
+                                        th: ({node, ...props}) => <th className="border border-slate-300 px-4 py-2 font-semibold text-left text-slate-800 break-keep whitespace-nowrap" {...props} />,
+                                        td: ({node, ...props}) => <td className="border border-slate-300 px-4 py-2 text-slate-700" {...props} />,
+                                        h3: ({node, ...props}) => <h3 className="text-lg font-bold text-slate-900 mt-6 mb-3" {...props} />,
+                                        h4: ({node, ...props}) => <h4 className="text-base font-bold text-slate-800 mt-5 mb-2" {...props} />,
+                                        ul: ({node, ...props}) => <ul className="list-disc pl-5 my-3 space-y-1" {...props} />,
+                                        ol: ({node, ...props}) => <ol className="list-decimal pl-5 my-3 space-y-1" {...props} />,
+                                        li: ({node, ...props}) => <li className="text-slate-700" {...props} />,
+                                        p: ({node, ...props}) => <p className="mb-3" {...props} />,
+                                        strong: ({node, ...props}) => <strong className="font-semibold text-blue-700" {...props} />,
+                                      }}
+                                    >
                                       {msg.parsedData.chat_reply}
                                     </ReactMarkdown>
                                   </div>
