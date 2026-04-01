@@ -190,13 +190,18 @@ export default function DashboardPage() {
            if (done) break;
            text += decoder.decode(value, { stream: true });
            
-           if (text.includes('___JSON_BLOCKS___')) {
-             const parts = text.split('___JSON_BLOCKS___');
+           if (text.includes('___JSON_BLOCKS___') || text.includes('JSON_BLOCKS')) {
+             const splitToken = text.includes('___JSON_BLOCKS___') ? '___JSON_BLOCKS___' : 'JSON_BLOCKS';
+             const parts = text.split(splitToken);
              assistantMsg.parsedData.chat_reply = parts[0].trim();
              try {
                const rawJson = parts[1].replace(/```json/g, '').replace(/```/g, '').trim();
                if (rawJson.startsWith('[') && rawJson.endsWith(']')) {
                  assistantMsg.parsedData.blocks = JSON.parse(rawJson);
+               } else if (rawJson.startsWith('[')) {
+                 // Try parsing incomplete JSON by appending ] or }]
+                 const fixed = rawJson.replace(/,\s*$/, '') + ']';
+                 assistantMsg.parsedData.blocks = JSON.parse(fixed);
                }
              } catch (e) {}
            } else {
