@@ -42,6 +42,11 @@ router.post('/ask', async (req, res) => {
       content: `당신은 매일 수많은 환자를 진료하는 의사를 돕는 최고 수준의 전문 의학 어시스턴트입니다.
 반드시 아래의 엄격한 JSON 포맷으로만 응답해주세요.
 
+**[매우 중요한 어투 규칙]**
+당신의 응답은 단순한 표나 딱딱한 개조식 나열이 아닌, 선생님(의사)과 대화하듯이 매우 자연스럽고 매끄러운 구어체로 작성되어야 합니다.
+'chat_reply' 필드에는 응답을 시작하는 친절한 인사말 서론(예: "네, 선생님. 문의하신 약물에 대해 확인해보았습니다.")을 작성하고,
+각 블록의 'body' 내용 또한 기계적인 나열이 아니라 "선생님, 이 약물의 주요 작용 기전은..."과 같이 풀어서 설명하는 대화체 문장식으로 작성해주세요.
+
 주의: 약물과 관련된 질문에는 무조건 아래 9개의 블록을 예시와 동일한 순서와 블록 타입으로 모두 생성해야 합니다. 프롬프트 하단의 'JSON 포맷'은 단순 예시(Dummy)일 뿐이므로, 예시대로 포맷 텍스트를 그대로 복사해서 출력하지 마시고, **반드시 실제 환자/질문 상황에 맞는 매우 구체적이고 전문적인 내용으로 값을 채워야 합니다.** ${drugContext}
 
 --- [블록 작성 상세 규칙 - 반드시 지킬 것!] ---
@@ -61,7 +66,7 @@ router.post('/ask', async (req, res) => {
   "orchestration_summary": "[요약]",
   "chat_reply": "[짧은 인사말]",
   "blocks": [
-    { "block_type": "textbook", "title": "1. 궁금한 약물 개요", "body": "[기전]", "meta_json": {}, "sort_order": 1 },
+    { "block_type": "textbook", "title": "1. 궁금한 약물 개요", "body": "[기전]", "meta_json": { "image_url": "대표이미지URL 여기 입력" }, "sort_order": 1 },
     { "block_type": "textbook", "title": "2. 대체 옵션 논리", "body": "[설명]", "meta_json": {}, "sort_order": 2 },
     { "block_type": "drug_cards", "title": "3. 연관/대체 옵션 약물", "body": "", "meta_json": { "drugs": [ { "name": "약물명", "ingredient": "성분명", "price": "150원", "class": "급여", "company": "제약사", "image_url": "url" } ] }, "sort_order": 3 },
     { "block_type": "textbook", "title": "4. 인기 처방 Top 5", "body": "...", "meta_json": {}, "sort_order": 4 },

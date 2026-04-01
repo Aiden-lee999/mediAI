@@ -259,8 +259,14 @@ export default function DashboardPage() {
               <div className="text-sm text-slate-600 flex-1" dangerouslySetInnerHTML={{ __html: body?.replace(/\n/g, '<br/>') || '' }} />
               {index === 0 && (
                 <div className="w-full md:w-32 h-32 flex-shrink-0 bg-slate-100 border border-slate-200 rounded-lg flex items-center justify-center flex-col shadow-sm">
-                   <div className="text-xl mb-1">💊</div>
-                   <div className="text-[10px] text-slate-400 font-medium">약물 이미지 (준비중)</div>
+                   {meta_json?.image_url && meta_json.image_url.includes('http') ? (
+                     <img src={meta_json.image_url} alt="약물 이미지" className="w-full h-full object-contain p-1 rounded-lg" />
+                   ) : (
+                     <>
+                       <div className="text-xl mb-1">💊</div>
+                       <div className="text-[10px] text-slate-400 font-medium">약물 이미지 (준비중)</div>
+                     </>
+                   )}
                 </div>
               )}
             </div>
@@ -517,12 +523,14 @@ export default function DashboardPage() {
                                    </div>
                                 )}
                                 
+                                {msg.parsedData?.chat_reply && (
+                                  <div className="text-sm leading-relaxed whitespace-pre-wrap mb-4 font-medium text-slate-800">
+                                    {msg.parsedData.chat_reply}
+                                  </div>
+                                )}
+                                
                                 {msg.parsedData?.blocks?.map((block: any, bi: number) => renderBlock(block, bi))}
                                 
-                                {(!msg.parsedData?.blocks || msg.parsedData.blocks.length === 0) && (
-                                   <div className="text-sm leading-relaxed whitespace-pre-wrap">{msg.parsedData?.chat_reply || ''}</div>
-                                )}
-
                                 {/* AI 응답 Action Bar (app.js 그대로 포팅) */}
                                 <div className="flex flex-wrap gap-2 mt-5 pt-4 border-t border-slate-100">
                                    <button className="px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-full hover:bg-slate-50 bg-white" onClick={() => alert('클립보드에 복사되었습니다.')}>복사</button>
