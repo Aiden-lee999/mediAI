@@ -189,7 +189,20 @@ export default function DashboardPage() {
            const { done, value } = await reader.read();
            if (done) break;
            text += decoder.decode(value, { stream: true });
-           assistantMsg.parsedData.chat_reply = text;
+           
+           if (text.includes('___JSON_BLOCKS___')) {
+             const parts = text.split('___JSON_BLOCKS___');
+             assistantMsg.parsedData.chat_reply = parts[0].trim();
+             try {
+               const rawJson = parts[1].replace(/```json/g, '').replace(/```/g, '').trim();
+               if (rawJson.startsWith('[') && rawJson.endsWith(']')) {
+                 assistantMsg.parsedData.blocks = JSON.parse(rawJson);
+               }
+             } catch (e) {}
+           } else {
+             assistantMsg.parsedData.chat_reply = text;
+           }
+           
            setMessages((prev) => {
              const updated = [...prev];
              updated[updated.length - 1] = { ...assistantMsg };
