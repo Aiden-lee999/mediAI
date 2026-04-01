@@ -180,7 +180,7 @@ export default function DashboardPage() {
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let text = '';
-      const assistantMsg = { role: 'assistant', parsedData: { chat_reply: '' } };
+      const assistantMsg: any = { role: 'assistant', parsedData: { chat_reply: '' } };
       
       setMessages((prev) => [...prev, assistantMsg]);
       
