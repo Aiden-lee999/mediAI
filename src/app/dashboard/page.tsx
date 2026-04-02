@@ -938,42 +938,43 @@ function DashboardPageContent() {
                  <div className="flex bg-slate-100 p-1 rounded-xl mx-auto w-full max-w-xs mb-1">
                    <button
                      onClick={() => setCurrentSpeaker('doctor')}
-                     className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${currentSpeaker === 'doctor' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                     disabled={isListening}
+                     className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all disabled:opacity-50 ${currentSpeaker === 'doctor' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                    >
                      원장님
                    </button>
                    <button
                      onClick={() => setCurrentSpeaker('patient')}
-                     className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${currentSpeaker === 'patient' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                     disabled={isListening}
+                     className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all disabled:opacity-50 ${currentSpeaker === 'patient' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                    >
                      환자
                    </button>
                  </div>
-                 <button 
-                   onClick={() => startVoiceRecognition(currentSpeaker)}
-                   disabled={isListening}
-                   className={`w-full py-4 sm:py-5 rounded-2xl font-bold flex flex-col items-center justify-center transition-all border-2 ${
-                     isListening 
-                       ? (currentSpeaker === 'doctor' ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-inner animate-pulse' : 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-inner animate-pulse') 
-                       : (currentSpeaker === 'doctor' ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 shadow-md' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 shadow-md')
-                   }`}
-                 >
-                   <span className="text-base">{isListening ? '말씀하세요...' : '말하기'}</span>
-                 </button>
-               </div>
-               
-               {isListening && (
-                 <div className="px-4 pb-4 bg-white">
-                   {transInput && (
-                     <div className="mb-3 p-3 bg-blue-50 text-blue-800 rounded-lg text-sm border border-blue-100 shadow-inner font-medium">
-                       {transInput} <span className="animate-pulse">...</span>
-                     </div>
-                   )}
-                   <button onClick={stopVoiceRecognition} className="w-full py-3 bg-red-100 text-red-700 rounded-xl text-sm font-bold border border-red-200 hover:bg-red-200 shadow-sm transition-colors">
-                     음성 인식 중지 및 번역 시작
+                 
+                 {!isListening ? (
+                   <button 
+                     onClick={() => startVoiceRecognition(currentSpeaker)}
+                     className={`w-full py-4 sm:py-5 rounded-2xl font-bold flex flex-col items-center justify-center transition-all border-2 ${currentSpeaker === 'doctor' ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 shadow-md' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 shadow-md'}`}
+                   >
+                     <span className="text-base">말하기 시작</span>
                    </button>
-                 </div>
-               )}
+                 ) : (
+                   <div className="flex flex-col gap-3 mt-2">
+                     {transInput && (
+                       <div className="p-4 bg-blue-50 text-blue-800 rounded-xl text-sm border border-blue-100 shadow-inner font-medium mb-1">
+                         {transInput} <span className="animate-pulse font-bold text-blue-500">...</span>
+                       </div>
+                     )}
+                     <button 
+                       onClick={stopVoiceRecognition} 
+                       className="w-full py-4 sm:py-5 rounded-2xl font-bold flex flex-col items-center justify-center transition-all border-2 bg-red-500 text-white border-red-600 hover:bg-red-600 shadow-md animate-pulse"
+                     >
+                       <span className="text-base">말하기 종료 및 통역</span>
+                     </button>
+                   </div>
+                 )}
+               </div>
             </div>
           )}
 
