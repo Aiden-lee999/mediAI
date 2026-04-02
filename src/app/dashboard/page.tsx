@@ -1,8 +1,66 @@
 ﻿'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { Suspense, useState, useRef, useEffect, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+type AppView = 'chat' | 'translate' | 'library' | 'rag_review';
+
+type SpeechRecognitionAlternativeLike = {
+  transcript: string;
+};
+
+type SpeechRecognitionResultLike = {
+  isFinal: boolean;
+  0: SpeechRecognitionAlternativeLike;
+};
+
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionResultLike>;
+};
+
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type TranslationLanguage = {
+  value: string;
+  label: string;
+  speechLang: string;
+};
+
+const TRANSLATION_LANGUAGES: TranslationLanguage[] = [
+  { value: '영어', label: '미국 영어 (US English)', speechLang: 'en-US' },
+  { value: '중국어', label: '중국어 (Chinese)', speechLang: 'zh-CN' },
+  { value: '일본어', label: '일본어 (Japanese)', speechLang: 'ja-JP' },
+  { value: '러시아어', label: '러시아어 (Russian)', speechLang: 'ru-RU' },
+  { value: '베트남어', label: '베트남어 (Vietnamese)', speechLang: 'vi-VN' },
+  { value: '몽골어', label: '몽골어 (Mongolian)', speechLang: 'mn-MN' },
+];
+
+const RECOGNITION_LANGUAGE = 'ko-KR';
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
+  if (typeof window === 'undefined') return null;
+
+  const speechWindow = window as Window & {
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    SpeechRecognition?: SpeechRecognitionConstructor;
+  };
+
+  return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
+}
 
 // ==========================================
 // 1. 하위 컴포넌트: 인터랙티브 약물 정렬 테이블
@@ -74,8 +132,10 @@ function SortableDrugTable({ initialDrugs }: { initialDrugs: any }) {
 // ==========================================
 // 2. 메인 대시보드 페이지
 // ==========================================
-export default function DashboardPage() {
-  const [view, setView] = useState<'chat' | 'translate' | 'library' | 'rag_review'>('chat');
+function DashboardPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [view, setView] = useState<AppView>('chat');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isOpinionModalOpen, setOpinionModalOpen] = useState(false);
   const [opinionText, setOpinionText] = useState('');
@@ -98,24 +158,56 @@ export default function DashboardPage() {
 
   // 번역 대시보드 상태
   const [transInput, setTransInput] = useState('');
-  const [transLang, setTransLang] = useState('en');
+  const [transLang, setTransLang] = useState('영어');
   const [transOutput, setTransOutput] = useState('');
   const [transNote, setTransNote] = useState('');
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [translationStatus, setTranslationStatus] = useState('');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const autoTranslateAfterSpeechRef = useRef(false);
+  const latestTranscriptRef = useRef('');
 
   useEffect(() => {
      // 초기 로드 시 로컬 스토리지 데이터 불러오기
      const localSessions = JSON.parse(localStorage.getItem('medSessions') || '[]');
      const localLib = JSON.parse(localStorage.getItem('medLibrary') || '[]');
+     const localUser = localStorage.getItem('med_user');
      if (localSessions.length > 0) setSessions(localSessions);
      if (localLib.length > 0) setSavedLibrary(localLib);
+     if (localUser) {
+       try {
+         setUser(JSON.parse(localUser));
+       } catch {}
+     }
   }, []);
+
+  useEffect(() => {
+    const nextView = searchParams.get('view');
+    if (nextView === 'translate' || nextView === 'chat' || nextView === 'library' || nextView === 'rag_review') {
+      setView(nextView);
+      return;
+    }
+
+    setView('chat');
+  }, [searchParams]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, view, transOutput]);
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+      if (typeof window !== 'undefined') {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   // 전공 맞춤형 추천 검색어
   const suggestions = useMemo(() => {
@@ -124,19 +216,167 @@ export default function DashboardPage() {
     return ['상기도 감염 항생제 처방 기준 알려줘', '첨부한 영상 판독해줘', '요즘 주2회 알바 초빙 벤치마크해줘'];
   }, [user.specialty]);
 
+  const updateView = (nextView: AppView) => {
+    setView(nextView);
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextView === 'chat') {
+      params.delete('view');
+    } else {
+      params.set('view', nextView);
+    }
+
+    const nextUrl = params.toString() ? `/dashboard?${params.toString()}` : '/dashboard';
+    router.replace(nextUrl);
+
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
+  };
+
+  const stopSpeaking = () => {
+    if (typeof window === 'undefined') return;
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  };
+
+  const speakTranslation = (text: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis || !text.trim()) return;
+
+    window.speechSynthesis.cancel();
+
+    const language = TRANSLATION_LANGUAGES.find((item) => item.value === transLang);
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = language?.speechLang || 'en-US';
+    utterance.rate = 1;
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const translateText = async (inputText: string, speakAfterTranslate = false) => {
+    const trimmedText = inputText.trim();
+    if (!trimmedText) return;
+
+    setIsTranslating(true);
+    setTranslationStatus('번역 중입니다...');
+    setTransOutput('');
+    setTransNote('');
+
+    try {
+      const res = await fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputText: trimmedText, targetLanguage: transLang })
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || '번역 요청 실패');
+      }
+
+      const data = await res.json();
+      const translatedText = String(data.translation || '').trim();
+      const noteText = String(data.note || '').trim();
+
+      setTransOutput(translatedText || '번역 결과를 생성하지 못했습니다.');
+      setTransNote(noteText);
+      setTranslationStatus(speakAfterTranslate ? '음성 번역이 완료되었습니다.' : '번역이 완료되었습니다.');
+
+      if (speakAfterTranslate && translatedText) {
+        speakTranslation(translatedText);
+      }
+    } catch (error) {
+      setTranslationStatus('번역 중 오류가 발생했습니다.');
+      setTransOutput(`번역 통신 오류가 발생했습니다. (${String(error)})`);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  const startVoiceRecognition = (autoTranslate = false) => {
+    const RecognitionConstructor = getSpeechRecognitionConstructor();
+    if (!RecognitionConstructor) {
+      setTranslationStatus('이 브라우저는 음성 입력을 지원하지 않습니다. Chrome 모바일을 권장합니다.');
+      return;
+    }
+
+    stopSpeaking();
+    recognitionRef.current?.stop();
+    autoTranslateAfterSpeechRef.current = autoTranslate;
+    latestTranscriptRef.current = '';
+
+    const recognition = new RecognitionConstructor();
+    recognition.lang = RECOGNITION_LANGUAGE;
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onresult = (event) => {
+      let liveTranscript = '';
+      let finalTranscript = '';
+
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result[0]?.transcript || '';
+        liveTranscript += transcript;
+        if (result.isFinal) {
+          finalTranscript += transcript;
+        }
+      }
+
+      const nextTranscript = (finalTranscript || liveTranscript).trim();
+      if (nextTranscript) {
+        latestTranscriptRef.current = nextTranscript;
+        setTransInput(nextTranscript);
+      }
+    };
+
+    recognition.onerror = (event) => {
+      setIsListening(false);
+      setTranslationStatus(event.error === 'not-allowed' ? '마이크 권한이 필요합니다.' : '음성 입력 중 오류가 발생했습니다.');
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      const textToTranslate = latestTranscriptRef.current.trim();
+
+      if (autoTranslateAfterSpeechRef.current && textToTranslate) {
+        autoTranslateAfterSpeechRef.current = false;
+        void translateText(textToTranslate, true);
+        return;
+      }
+
+      if (textToTranslate) {
+        setTranslationStatus('음성 입력이 완료되었습니다. 필요하면 바로 번역하거나 음성 재생할 수 있습니다.');
+      } else {
+        setTranslationStatus('음성이 인식되지 않았습니다. 다시 시도해 주세요.');
+      }
+    };
+
+    recognitionRef.current = recognition;
+    setIsListening(true);
+    setTranslationStatus(autoTranslate ? '말씀하시면 번역 후 바로 음성으로 들려드립니다.' : '음성을 듣는 중입니다...');
+    recognition.start();
+  };
+
+  const stopVoiceRecognition = () => {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+  };
+
   const handleCreateNewChat = () => {
-    setView('chat');
+    updateView('chat');
     setMessages([]);
     setAttachmentBase64(null);
     setCurrentSessionId(`session_${Date.now()}`);
-    if(window.innerWidth < 768) setSidebarOpen(false);
   };
 
   const loadSession = (sessionData: any) => {
-    setView('chat');
+    updateView('chat');
     setCurrentSessionId(sessionData.id);
     setMessages(sessionData.history || []);
-    if(window.innerWidth < 768) setSidebarOpen(false);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -243,31 +483,7 @@ export default function DashboardPage() {
   };
 
   const handleTranslate = async () => {
-    if (!transInput.trim()) return;
-    setTransOutput('번역 중입니다...');
-    setTransNote('');
-    try {
-      const res = await fetch('/api/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: `다음 내용을 ${transLang}로 의학적 뉘앙스를 살려서 환자/보호자가 이해하기 쉽게 번역해줘:\n"${transInput}"` })
-      });
-      const data = await res.json();
-      
-      let transText = data.chat_reply;
-      let noteText = '';
-      if (data.blocks) {
-         const tBlock = data.blocks.find((b:any) => b.block_type === 'translation');
-         if (tBlock) {
-             transText = tBlock.body;
-             noteText = tBlock.meta_json?.clinical_note || '';
-         }
-      }
-      setTransOutput(transText);
-      setTransNote(noteText);
-    } catch(e) {
-      setTransOutput('번역 통신 오류가 발생했습니다.');
-    }
+    await translateText(transInput, false);
   };
 
   const handleSaveToLibrary = () => {
@@ -462,16 +678,16 @@ export default function DashboardPage() {
         </button>
 
         <div className="flex flex-col gap-2 mb-8 text-sm text-slate-300">
-           <button onClick={() => {setView('chat'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='chat'?'bg-slate-800 text-white':''}`}>
+           <button onClick={() => updateView('chat')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='chat'?'bg-slate-800 text-white':''}`}>
                전문가 어시스턴트
            </button>
-           <button onClick={() => {setView('translate'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='translate'?'bg-slate-800 text-white':''}`}>
+           <button onClick={() => updateView('translate')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='translate'?'bg-slate-800 text-white':''}`}>
                진료실 다국어 번역
            </button>
-           <button onClick={() => {setView('rag_review'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='rag_review'?'bg-slate-800 text-white':''}`}>
+           <button onClick={() => updateView('rag_review')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='rag_review'?'bg-slate-800 text-white':''}`}>
                RAG 및 리뷰 워크플로우 (신규)
            </button>
-           <button onClick={() => {setView('library'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='library'?'bg-slate-800 text-white':''}`}>
+           <button onClick={() => updateView('library')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='library'?'bg-slate-800 text-white':''}`}>
                내 라이브러리
            </button>
            <button onClick={() => window.location.href = '/mypage'} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 text-blue-300 mt-4 border border-slate-700`}>
@@ -618,7 +834,32 @@ export default function DashboardPage() {
           {view === 'translate' && (
             <div className="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-sm border border-slate-200 mt-4">
                <h2 className="text-xl font-bold mb-4 text-slate-800">진료실 다국어 특화 번역</h2>
-               <p className="text-sm text-slate-500 mb-6">환자 복약지도, 소견서, 진단서 등에 사용되는 의학적 뉘앙스를 엄격하게 유지하여 번역합니다.</p>
+               <p className="text-sm text-slate-500 mb-4">환자 복약지도, 소견서, 진단서 등에 사용되는 의학적 뉘앙스를 유지해 번역하고, 음성으로 다시 들려줄 수 있습니다.</p>
+               <div className="mb-6 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-cyan-50 p-4">
+                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                   <div>
+                     <div className="text-sm font-bold text-slate-800">빠른 음성 통역</div>
+                     <div className="text-xs text-slate-600 mt-1">한국어로 말씀하시면 입력 후 번역하고, 결과를 선택한 언어로 바로 읽어줍니다.</div>
+                   </div>
+                   <div className="flex gap-2">
+                     <button
+                       onClick={() => startVoiceRecognition(true)}
+                       disabled={isListening || isTranslating}
+                       className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                     >
+                       {isListening ? '듣는 중...' : '음성 통역 시작'}
+                     </button>
+                     {isListening && (
+                       <button
+                         onClick={stopVoiceRecognition}
+                         className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                       >
+                         중지
+                       </button>
+                     )}
+                   </div>
+                 </div>
+               </div>
                
                <div className="mb-4">
                  <label className="block text-sm font-bold text-slate-700 mb-2">원문 입력 (의학 용어 포함)</label>
@@ -626,30 +867,51 @@ export default function DashboardPage() {
                     className="w-full border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px] resize-y" 
                     placeholder="예: 해당 약제는 위장장애가 있을 수 있으니 식후 30분에 충분한 물과 함께 복용하세요."
                     value={transInput}
-                    onChange={(e) => setTransInput(e.target.value)}
+                    onChange={(e) => {
+                      latestTranscriptRef.current = e.target.value;
+                      setTransInput(e.target.value);
+                    }}
                  />
                </div>
 
-               <div className="flex gap-4 mb-6 items-end">
+               <div className="flex flex-col gap-4 mb-4 sm:flex-row sm:items-end">
                  <div className="flex-1">
                    <label className="block text-sm font-bold text-slate-700 mb-2">번역 대상 언어</label>
                    <select className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={transLang} onChange={(e) => setTransLang(e.target.value)}>
-                      <option value="영어">미국 영어 (US English)</option>
-                      <option value="중국어">중국어 (Chinese)</option>
-                      <option value="일본어">일본어 (Japanese)</option>
-                      <option value="러시아어">러시아어 (Russian)</option>
-                      <option value="베트남어">러시아어 (Vietnamese)</option>
-                      <option value="몽골어">몽골어 (Mongolian)</option>
+                      {TRANSLATION_LANGUAGES.map((language) => (
+                        <option key={language.value} value={language.value}>{language.label}</option>
+                      ))}
                    </select>
                  </div>
-                 <button onClick={handleTranslate} className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-lg text-sm shadow-md transition whitespace-nowrap h-[42px]">
-                   번역 실행
-                 </button>
+                 <div className="flex gap-2">
+                   <button onClick={() => startVoiceRecognition(false)} disabled={isListening || isTranslating} className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100">
+                     {isListening ? '듣는 중...' : '음성 입력'}
+                   </button>
+                   <button onClick={handleTranslate} disabled={isTranslating} className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-lg text-sm shadow-md transition whitespace-nowrap disabled:cursor-not-allowed disabled:bg-slate-300">
+                     {isTranslating ? '번역 중...' : '번역 실행'}
+                   </button>
+                 </div>
                </div>
+
+               {translationStatus && (
+                 <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                   {translationStatus}
+                 </div>
+               )}
 
                {transOutput && (
                  <div className="border-t border-slate-200 pt-6 mt-2">
-                   <label className="block text-sm font-bold text-slate-700 mb-2">번역 결과 (클릭하여 복사 가능)</label>
+                   <div className="mb-2 flex items-center justify-between gap-3">
+                     <label className="block text-sm font-bold text-slate-700">번역 결과 (클릭하여 복사 가능)</label>
+                     <div className="flex gap-2">
+                       <button onClick={() => speakTranslation(transOutput)} disabled={isSpeaking || !transOutput} className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
+                         {isSpeaking ? '재생 중...' : '결과 듣기'}
+                       </button>
+                       <button onClick={stopSpeaking} disabled={!isSpeaking} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
+                         음성 정지
+                       </button>
+                     </div>
+                   </div>
                    <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 text-indigo-900 text-sm whitespace-pre-wrap cursor-pointer" onClick={() => alert('복사되었습니다.')}>
                      {transOutput}
                    </div>
@@ -910,5 +1172,13 @@ export default function DashboardPage() {
       )}
 
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">대시보드를 불러오는 중입니다...</div>}>
+      <DashboardPageContent />
+    </Suspense>
   );
 }
