@@ -329,6 +329,7 @@ function DashboardPageContent() {
     stopSpeaking();
     recognitionRef.current?.stop();
     latestTranscriptRef.current = '';
+    setTransInput('');
     setCurrentSpeaker(role);
 
     const recognition = new RecognitionConstructor();
@@ -342,7 +343,7 @@ function DashboardPageContent() {
     }
     
     recognition.interimResults = true;
-    recognition.continuous = false;
+    recognition.continuous = true;
 
     recognition.onresult = (event) => {
       let liveTranscript = '';
@@ -944,9 +945,14 @@ function DashboardPageContent() {
                </div>
                
                {isListening && (
-                 <div className="px-4 pb-4 bg-white -mt-2">
+                 <div className="px-4 pb-4 bg-white">
+                   {transInput && (
+                     <div className="mb-3 p-3 bg-blue-50 text-blue-800 rounded-lg text-sm border border-blue-100 shadow-inner font-medium">
+                       {transInput} <span className="animate-pulse">...</span>
+                     </div>
+                   )}
                    <button onClick={stopVoiceRecognition} className="w-full py-3 bg-red-100 text-red-700 rounded-xl text-sm font-bold border border-red-200 hover:bg-red-200 shadow-sm transition-colors">
-                     음성 인식 중지
+                     음성 인식 중지 및 번역 시작
                    </button>
                  </div>
                )}
