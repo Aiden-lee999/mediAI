@@ -346,38 +346,56 @@ function DashboardPageContent() {
     recognition.continuous = true;
 
     recognition.onresult = (event) => {
-      let liveTranscript = '';
-      let finalTranscript = '';
+      let currentFinal = '';
+      let currentInterim = '';
 
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        const transcript = result[0]?.transcript || '';
-        liveTranscript += transcript;
+      for (let i = 0; i < event.results.length; i += 1) {
+        const result = event.results[i];
         if (result.isFinal) {
-          finalTranscript += transcript;
+          currentFinal += result[0].transcript;
+        } else {
+          currentInterim += result[0].transcript;
         }
       }
 
-      const nextTranscript = (finalTranscript || liveTranscript).trim();
-      if (nextTranscript) {
-        latestTranscriptRef.current = nextTranscript;
-        setTransInput(nextTranscript);
+      const fullTranscript = (currentFinal + ' ' + currentInterim).trim();
+      if (fullTranscript) {
+        latestTranscriptRef.current = fullTranscript;
+        setTransInput(fullTranscript);
       }
     };
 
-    recognition.onerror = (event) => {
+    recognition.onerror = (event: any) => {
       setIsListening(false);
-      setTranslationStatus(event.error === 'not-allowed' ? '마이크 권한이 필요합니다.' : '음성 입력 중 오류가 발생했습니다.');
+      console.error("Speech Recognition Error:", event.error);
+      if (event.error === 'not-allowed') {
+         setTranslationStatus('마이크 권한이 거부되었습니다. (브라우저 주소창 왼쪽의 자물쇠 아이콘을 눌러 마이크를 허용하거나, 보안된 HTTPS 환경인지 확인해주세요.)');
+      } else if (event.error === 'no-speech') {
+         setTranslationStatus('마이크에 입력된 소리가 없습니다. 다시 시도해주세요.');
+      } else {
+         setTranslationStatus(`음성 인식 오류 발생: ${event.error}`);
+      }
     };
 
     recognition.onend = () => {
       setIsListening(false);
-      const textToTranslate = latestTranscriptRef.current.trim();
+      
+      // onend 이벤트가 에러 직후에 호출될 수 있으므로, 이미 에러 메시지가 떠있다면 덮어쓰지 않게끔 처리
+      setTranslationStatus((prev) => {
+         if (prev.includes('오류') || prev.includes('마이크') || prev.includes('거부')) return prev;
+         return prev;
+      });
 
+      const textToTranslate = latestTranscriptRef.current.trim();
       if (textToTranslate) {
-        void translateBiDirectional(textToTranslate, role);
+         setTranslationStatus('음성 종료: 곧바로 자동 번역을 시작합니다.');
+         void translateBiDirectional(textToTranslate, role);
       } else {
-        setTranslationStatus('음성이 인식되지 않았습니다. 다시 시도해 주세요.');
+         setTranslationStatus((prev) => {
+            // 에러 메시지가 없다면(단순히 말 없이 꺼진 경우)
+            if (prev.includes('오류') || prev.includes('마이크') || prev.includes('거부')) return prev;
+            return '음성이 한 마디도 인식되지 않았습니다. 마이크 입력이 정상인지(모바일의 경우 Chrome 앱인지) 다시 테스트해주세요.';
+         });
       }
     };
 
