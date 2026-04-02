@@ -345,25 +345,28 @@ function DashboardPageContent() {
     }
     
     recognition.interimResults = true;
-    recognition.continuous = true;
+    recognition.continuous = false;
 
     recognition.onresult = (event) => {
-      let currentFinal = '';
-      let currentInterim = '';
+      let liveTranscript = '';
+      let finalTranscript = '';
 
-      for (let i = 0; i < event.results.length; i += 1) {
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const result = event.results[i];
+        const transcript = result[0].transcript || '';
+        
         if (result.isFinal) {
-          currentFinal += result[0].transcript;
+          finalTranscript += transcript;
         } else {
-          currentInterim += result[0].transcript;
+           liveTranscript += transcript;
         }
       }
 
-      const fullTranscript = (currentFinal + ' ' + currentInterim).trim();
-      if (fullTranscript) {
-        latestTranscriptRef.current = fullTranscript;
-        setTransInput(fullTranscript);
+      // 기존 텍스트에 덧붙이지 않고, 이번 인식 세션(0단위)에서 나온 결과만 사용
+      const nextTranscript = (finalTranscript || liveTranscript).trim();
+      if (nextTranscript) {
+        latestTranscriptRef.current = nextTranscript;
+        setTransInput(nextTranscript);
       }
     };
 
