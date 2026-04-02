@@ -322,7 +322,9 @@ function DashboardPageContent() {
   const startVoiceRecognition = (role: 'doctor' | 'patient') => {
     const RecognitionConstructor = getSpeechRecognitionConstructor();
     if (!RecognitionConstructor) {
-      setTranslationStatus('이 브라우저는 음성 입력을 지원하지 않습니다. Chrome 모바일을 권장합니다.');
+      const msg = '현재 브라우저 상태에서는 음성 인식을 지원하지 않습니다.\n\n[해결 방법]\n1. 모바일 크롬(Chrome) 앱이나 사파리(Safari)로 접속해 주세요.\n2. 카카오톡 인앱 브라우저라면 우측 하단 설정에서 "다른 브라우저로 열기"를 해주세요.\n3. 주소창이 http 가 아닌 https 로 시작하는지 확인해 주세요 (로컬 네트워크 환경 제외).';
+      alert(msg);
+      setTranslationStatus(msg);
       return;
     }
 
@@ -400,9 +402,16 @@ function DashboardPageContent() {
     };
 
     recognitionRef.current = recognition;
-    setIsListening(true);
-    setTranslationStatus(role === 'doctor' ? '원장님 말씀 듣는 중...' : '환자 말씀 듣는 중...');
-    recognition.start();
+    
+    try {
+      recognition.start();
+      setIsListening(true);
+      setTranslationStatus(role === 'doctor' ? '원장님 말씀 듣는 중...' : '환자 말씀 듣는 중...');
+    } catch (err: any) {
+      setIsListening(false);
+      console.error(err);
+      alert('마이크를 시작할 수 없습니다.\n오류: ' + err.message);
+    }
   };
 
   const stopVoiceRecognition = () => {
