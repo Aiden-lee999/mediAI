@@ -49,6 +49,15 @@ const TRANSLATION_LANGUAGES: TranslationLanguage[] = [
   { value: '몽골어', label: '몽골어 (Mongolian)', speechLang: 'mn-MN' },
 ];
 
+const PATIENT_UI_TEXT: Record<string, { start: string; stop: string; listening: string; patient: string }> = {
+  '영어': { start: 'Start Speaking', stop: 'Stop & Translate', listening: 'Listening...', patient: 'Patient' },
+  '중국어': { start: '开始说话', stop: '停止并翻译', listening: '倾听中...', patient: '患者' },
+  '일본어': { start: '話し始める', stop: '停止して翻訳', listening: '聞いています...', patient: '患者' },
+  '러시아어': { start: 'Начать говорить', stop: 'Остановить и перевести', listening: 'Слушаю...', patient: 'Пациент' },
+  '베트남어': { start: 'Bắt đầu nói', stop: 'Dừng và Dịch', listening: 'Đang nghe...', patient: 'Bệnh nhân' },
+  '몽골어': { start: 'Ярьж эхлэх', stop: 'Зогсоож орчуулах', listening: 'Сонсож байна...', patient: 'Өвчтөн' },
+};
+
 const RECOGNITION_LANGUAGE = 'ko-KR';
 
 function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
@@ -173,6 +182,8 @@ function DashboardPageContent() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const autoTranslateAfterSpeechRef = useRef(false);
   const latestTranscriptRef = useRef('');
+  const accumulatedTranscriptRef = useRef('');
+  const isManualStopRef = useRef(false);
 
   useEffect(() => {
      // 초기 로드 시 로컬 스토리지 데이터 불러오기
@@ -331,6 +342,8 @@ function DashboardPageContent() {
     stopSpeaking();
     recognitionRef.current?.stop();
     latestTranscriptRef.current = '';
+    accumulatedTranscriptRef.current = '';
+    isManualStopRef.current = false;
     setTransInput('');
     setCurrentSpeaker(role);
 
@@ -366,23 +379,40 @@ function DashboardPageContent() {
       const nextTranscript = (finalTranscript || liveTranscript).trim();
       if (nextTranscript) {
         latestTranscriptRef.current = nextTranscript;
-        setTransInput(nextTranscript);
+        const totalText = (accumulatedTranscriptRef.current + ' ' + nextTranscript).trim();
+        setTransInput(totalText);
       }
     };
 
     recognition.onerror = (event: any) => {
-      setIsListening(false);
       console.error("Speech Recognition Error:", event.error);
-      if (event.error === 'not-allowed') {
-         setTranslationStatus('마이크 권한이 거부되었습니다. (브라우저 주소창 왼쪽의 자물쇠 아이콘을 눌러 마이크를 허용하거나, 보안된 HTTPS 환경인지 확인해주세요.)');
-      } else if (event.error === 'no-speech') {
-         setTranslationStatus('마이크에 입력된 소리가 없습니다. 다시 시도해주세요.');
-      } else {
-         setTranslationStatus(`음성 인식 오류 발생: ${event.error}`);
+      if (event.error === 'not-allowed' || event.error === 'no-speech') {
+         // 권한 거부나 진짜 문제일 경우 처리 중단
+         setIsListening(false);
+         if (event.error === 'not-allowed') {
+           setTranslationStatus('마이크 권한이 거부되었습니다. (브라우저 주소창 왼쪽의 자물쇠 아이콘을 눌러 마이크를 허용하거나, 보안된 HTTPS 환경인지 확인해주세요.)');
+         } else {
+           setTranslationStatus('마이크에 입력된 소리가 없습니다. 다시 시도해주세요.');
+         }
+         isManualStopRef.current = true; // 더 이상 재시작 안 함
       }
     };
 
     recognition.onend = () => {
+      if (!isManualStopRef.current) {
+        // 자연스럽게 침묵으로 끊긴 경우, 누적하고 바로 재시작
+        if (latestTranscriptRef.current) {
+          accumulatedTranscriptRef.current = (accumulatedTranscriptRef.current + ' ' + latestTranscriptRef.current).trim();
+          latestTranscriptRef.current = '';
+        }
+        try {
+          recognitionRef.current?.start();
+          return;
+        } catch (e) {
+          // Restart failed
+        }
+      }
+
       setIsListening(false);
       
       // onend 이벤트가 에러 직후에 호출될 수 있으므로, 이미 에러 메시지가 떠있다면 덮어쓰지 않게끔 처리
@@ -391,10 +421,10 @@ function DashboardPageContent() {
          return prev;
       });
 
-      const textToTranslate = latestTranscriptRef.current.trim();
-      if (textToTranslate) {
-         setTranslationStatus('음성 종료: 곧바로 자동 번역을 시작합니다.');
-         void translateBiDirectional(textToTranslate, role);
+      const fullTextToTranslate = (accumulatedTranscriptRef.current + ' ' + latestTranscriptRef.current).trim();
+      if (fullTextToTranslate) {
+         setTranslationStatus('음성 종료: 텍스트를 교정하고 통역 및 음성 합성을 시작합니다.');
+         void translateBiDirectional(fullTextToTranslate, role);
       } else {
          setTranslationStatus((prev) => {
             // 에러 메시지가 없다면(단순히 말 없이 꺼진 경우)
@@ -409,7 +439,8 @@ function DashboardPageContent() {
     try {
       recognition.start();
       setIsListening(true);
-      setTranslationStatus(role === 'doctor' ? '원장님 말씀 듣는 중...' : '환자 말씀 듣는 중...');
+      const startListeningText = PATIENT_UI_TEXT[transLang]?.listening || '듣는 중...';
+      setTranslationStatus(role === 'doctor' ? '원장님 말씀 듣고 있습니다. (종료 대기중)' : `[${transLang}] ${startListeningText} `);
     } catch (err: any) {
       setIsListening(false);
       console.error(err);
@@ -418,6 +449,7 @@ function DashboardPageContent() {
   };
 
   const stopVoiceRecognition = () => {
+    isManualStopRef.current = true;
     recognitionRef.current?.stop();
     setIsListening(false);
   };
@@ -960,7 +992,7 @@ function DashboardPageContent() {
                      disabled={isListening}
                      className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all disabled:opacity-50 ${currentSpeaker === 'patient' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                    >
-                     환자
+                     {PATIENT_UI_TEXT[transLang]?.patient || '환자'}
                    </button>
                  </div>
                  
@@ -969,7 +1001,11 @@ function DashboardPageContent() {
                      onClick={() => startVoiceRecognition(currentSpeaker)}
                      className={`w-full py-4 sm:py-5 rounded-2xl font-bold flex flex-col items-center justify-center transition-all border-2 ${currentSpeaker === 'doctor' ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 shadow-md' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 shadow-md'}`}
                    >
-                     <span className="text-base">말하기 시작</span>
+                     <span className="text-base">
+                       {currentSpeaker === 'doctor' 
+                         ? '말하기 시작' 
+                         : (PATIENT_UI_TEXT[transLang]?.start || '말하기 시작')}
+                     </span>
                    </button>
                  ) : (
                    <div className="flex flex-col gap-3 mt-2">
@@ -982,7 +1018,11 @@ function DashboardPageContent() {
                        onClick={stopVoiceRecognition} 
                        className="w-full py-4 sm:py-5 rounded-2xl font-bold flex flex-col items-center justify-center transition-all border-2 bg-red-500 text-white border-red-600 hover:bg-red-600 shadow-md animate-pulse"
                      >
-                       <span className="text-base">말하기 종료 및 통역</span>
+                       <span className="text-base">
+                         {currentSpeaker === 'doctor' 
+                           ? '말하기 종료 및 통역' 
+                           : (PATIENT_UI_TEXT[transLang]?.stop || '말하기 종료 및 통역')}
+                       </span>
                      </button>
                    </div>
                  )}
