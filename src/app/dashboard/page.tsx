@@ -681,8 +681,8 @@ function DashboardPageContent() {
            <button onClick={() => updateView('chat')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='chat'?'bg-slate-800 text-white':''}`}>
                전문가 어시스턴트
            </button>
-           <button onClick={() => updateView('translate')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='translate'?'bg-slate-800 text-white':''}`}>
-               진료실 다국어 번역
+             <button onClick={() => updateView('translate')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='translate'?'bg-slate-800 text-white':''}`}>
+               다국어 진료 어시스턴트
            </button>
            <button onClick={() => updateView('rag_review')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='rag_review'?'bg-slate-800 text-white':''}`}>
                RAG 및 리뷰 워크플로우 (신규)
@@ -715,13 +715,21 @@ function DashboardPageContent() {
       {/* 메인 캔버스 */}
       <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full relative">
         <header className="bg-white border-b border-slate-200 p-4 flex justify-between items-center shadow-sm z-30">
-          <button className="md:hidden p-2 -ml-2 text-slate-600" onClick={() => setSidebarOpen(true)}> 메뉴</button>
+          <div className="flex items-center gap-2 md:hidden">
+            <button className="p-2 -ml-2 text-slate-600" onClick={() => setSidebarOpen(true)}> 메뉴</button>
+            <button
+              className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${view === 'translate' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}
+              onClick={() => updateView('translate')}
+            >
+              실시간 번역
+            </button>
+          </div>
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-               {view === 'chat' ? '전문 의학 어시스턴트' : view === 'translate' ? '진료실 다국어 번역' : view === 'rag_review' ? 'RAG 기반 논문/가이드라인 검색 및 리뷰' : '내 라이브러리'}    
+               {view === 'chat' ? '전문 의학 어시스턴트' : view === 'translate' ? '다국어 진료 어시스턴트' : view === 'rag_review' ? 'RAG 기반 논문/가이드라인 검색 및 리뷰' : '내 라이브러리'}    
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-               {view === 'chat' ? '진료, 연구, 약물 보조 및 종합 인텔리전스' : view === 'translate' ? '복약지도 및 소견서 임상 번역' : view === 'rag_review' ? '최신 논문 기반 응답 및 동료 의사 리뷰 워크플로우 연동' : '저장된 중요 레퍼런스 모음'}
+               {view === 'chat' ? '진료, 연구, 약물 보조 및 종합 인텔리전스' : view === 'translate' ? '복약지도, 설명, 통역을 위한 실시간 음성 번역' : view === 'rag_review' ? '최신 논문 기반 응답 및 동료 의사 리뷰 워크플로우 연동' : '저장된 중요 레퍼런스 모음'}
             </p>
           </div>
           {view === 'chat' && messages.length > 0 && (
@@ -833,7 +841,7 @@ function DashboardPageContent() {
           {/* ===================== TRANSLATE VIEW (app.js 완벽 포팅) ===================== */}
           {view === 'translate' && (
             <div className="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-sm border border-slate-200 mt-4">
-               <h2 className="text-xl font-bold mb-4 text-slate-800">진료실 다국어 특화 번역</h2>
+               <h2 className="text-xl font-bold mb-4 text-slate-800">다국어 진료 어시스턴트</h2>
                <p className="text-sm text-slate-500 mb-4">환자 복약지도, 소견서, 진단서 등에 사용되는 의학적 뉘앙스를 유지해 번역하고, 음성으로 다시 들려줄 수 있습니다.</p>
                <div className="mb-6 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-cyan-50 p-4">
                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
