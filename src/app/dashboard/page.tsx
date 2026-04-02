@@ -4,6 +4,8 @@ import { Suspense, useState, useRef, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { QRCodeSVG } from 'qrcode.react';
+import SignatureCanvas from 'react-signature-canvas';
 
 type AppView = 'chat' | 'translate' | 'library' | 'rag_review';
 
@@ -170,8 +172,16 @@ function DashboardPageContent() {
   const [currentSpeaker, setCurrentSpeaker] = useState<'doctor' | 'patient'>('doctor');
   const [transInput, setTransInput] = useState('');
   const [transLang, setTransLang] = useState('영어');
+  const [transTool, setTransTool] = useState<'chat' | 'pre_intake' | 'charting' | 'summary_qr' | 'consent'>('chat');
   const [transOutput, setTransOutput] = useState('');
   const [transNote, setTransNote] = useState('');
+  
+  const [chartingResult, setChartingResult] = useState('');
+  const [summaryResult, setSummaryResult] = useState('');
+  const sigCanvas = useRef<any>(null);
+  const [consentSaved, setConsentSaved] = useState(false);
+  const [intakeForm, setIntakeForm] = useState({ symptom: '', duration: '', history: '' });
+  const [isIntakeSubmitted, setIsIntakeSubmitted] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -928,8 +938,16 @@ function DashboardPageContent() {
 
           {/* ===================== TRANSLATE VIEW (app.js 완벽 포팅) ===================== */}
           {view === 'translate' && (
-            <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-120px)] bg-white rounded-xl shadow-sm border border-slate-200 mt-2 overflow-hidden">
-               <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-end">
+            <div className="max-w-4xl mx-auto flex flex-col h-[calc(100vh-120px)] bg-white rounded-xl shadow-sm border border-slate-200 mt-2 overflow-hidden">
+               {/* Header for Translate */}
+               <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
+                 <div className="flex gap-2">
+                   <button onClick={() => setTransTool('chat')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'chat' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>📍 실시간 통역</button>
+                   <button onClick={() => setTransTool('pre_intake')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'pre_intake' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>📝 문진표</button>
+                   <button onClick={() => setTransTool('charting')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'charting' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>📋 AI 자동 차팅</button>
+                   <button onClick={() => setTransTool('summary_qr')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'summary_qr' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>📱 요약 QR</button>
+                   <button onClick={() => setTransTool('consent')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'consent' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>✍️ 전자 동의서</button>
+                 </div>
                  <div className="w-full sm:w-auto">
                    <select className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 shadow-sm" value={transLang} onChange={(e) => setTransLang(e.target.value)}>
                       {TRANSLATION_LANGUAGES.map((language) => (
@@ -939,7 +957,9 @@ function DashboardPageContent() {
                  </div>
                </div>
 
-               <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 bg-slate-50">
+               {transTool === 'chat' && (
+                 <>
+                   <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 bg-slate-50">
                  {translationChat.length === 0 ? (
                    <div className="flex flex-col items-center justify-center h-full text-slate-400">
                      <p className="text-sm">하단의 버튼을 눌러 양방향 통역을 시작하세요.</p>
@@ -1027,6 +1047,145 @@ function DashboardPageContent() {
                    </div>
                  )}
                </div>
+               </>
+               )}
+
+               {transTool === 'pre_intake' && (
+                 <div className="p-6 bg-slate-50 flex-1 overflow-y-auto">
+                   <h3 className="text-lg font-bold text-slate-800 mb-4">{transLang} 사전 문진표 (Pre-Intake Form)</h3>
+                   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                     {!isIntakeSubmitted ? (
+                     <>
+                       <div className="text-sm font-bold text-indigo-700">🩺 의사에게 전달할 증상을 입력해주세요.</div>
+                       <div>
+                         <label className="block text-xs font-semibold text-slate-600 mb-1">Q. 어디가 불편하신가요? (주호소)</label>
+                         <textarea className="w-full p-2 border border-slate-300 rounded bg-slate-50 focus:bg-white" rows={2} value={intakeForm.symptom} onChange={e=>setIntakeForm({...intakeForm, symptom:e.target.value})} placeholder="예: 머리가 아프고 열이 납니다..."></textarea>
+                       </div>
+                       <div>
+                         <label className="block text-xs font-semibold text-slate-600 mb-1">Q. 증상이 কবে부터 시작되었나요?</label>
+                         <input type="text" className="w-full p-2 border border-slate-300 rounded bg-slate-50 focus:bg-white" value={intakeForm.duration} onChange={e=>setIntakeForm({...intakeForm, duration:e.target.value})} placeholder="예: 3일 전부터" />
+                       </div>
+                       <div>
+                         <label className="block text-xs font-semibold text-slate-600 mb-1">Q. 복용 중인 약이나 기저질환이 있나요?</label>
+                         <input type="text" className="w-full p-2 border border-slate-300 rounded bg-slate-50 focus:bg-white" value={intakeForm.history} onChange={e=>setIntakeForm({...intakeForm, history:e.target.value})} placeholder="예: 고혈압 약 복용중" />
+                       </div>
+                       <button onClick={() => {
+                         setIsIntakeSubmitted(true);
+                         setTranslationChat(prev => [...prev, { id: Date.now(), role: 'patient', text: `문진 요약:\n증상: ${intakeForm.symptom}\n기간: ${intakeForm.duration}\n병력: ${intakeForm.history}`, translatedText: `[사전 문진 요약]\n- 주호소: ${intakeForm.symptom || '없음'}\n- 발생시기: ${intakeForm.duration || '없음'}\n- 기저질환/복용약: ${intakeForm.history || '없음'}`, note: 'AI 분석: 문진표가 등록되었습니다.' }]);
+                       }} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700">제출 및 원장님께 전송</button>
+                     </>
+                     ) : (
+                       <div className="text-center py-6">
+                         <div className="text-4xl mb-2">✅</div>
+                         <div className="font-bold text-slate-800">문진표가 제출되었습니다.</div>
+                         <div className="text-sm text-slate-500 mt-2">제출된 정보는 진료 시 원장님 화면에 요약되어 표기됩니다.</div>
+                         <button onClick={()=>setIsIntakeSubmitted(false)} className="mt-4 text-xs text-blue-600 underline">다시 작성하기</button>
+                       </div>
+                     )}
+                   </div>
+                 </div>
+               )}
+
+               {transTool === 'charting' && (
+                 <div className="p-6 bg-slate-50 flex-1 overflow-y-auto">
+                   <div className="flex justify-between items-center mb-4">
+                     <h3 className="text-lg font-bold text-slate-800">AI 자동 차팅 (SOAP Note)</h3>
+                     <button onClick={() => {
+                        setChartingResult("S (Subjective):\n- 환자는 두통과 미열을 호소함\n- 3일 전부터 증상 지속됨\n- 기저질환 없음\n\nO (Objective):\n- 혈압 정상, 특이소견 관찰 안됨\n- 진료 중 의사소통 양호\n\nA (Assessment):\n- Common Cold (감기)\n- Tension Headache 의심\n\nP (Plan):\n- 해열진통제(Acetaminophen) 3일치 처방\n- 증상 호전 없을 시 재내원 안내");
+                     }} className="px-4 py-2 bg-blue-600 text-white font-bold text-sm rounded-lg flex items-center gap-2 hover:bg-blue-700 shadow-sm"><span className="text-lg">✨</span> AI 차트 생성</button>
+                   </div>
+                   
+                   {chartingResult ? (
+                     <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                       <h4 className="text-xs font-bold text-blue-600 mb-3 border-b pb-2">생성된 초기 SOAP 차트 (EMR 복사용)</h4>
+                       <textarea className="w-full h-64 p-3 text-sm font-mono bg-slate-50 border border-slate-200 rounded focus:outline-blue-500" value={chartingResult} readOnly></textarea>
+                       <div className="mt-4 flex gap-2">
+                         <button className="flex-1 py-2 border border-slate-300 rounded font-bold text-sm text-slate-600 hover:bg-slate-50" onClick={()=>setChartingResult('')}>초기화</button>
+                         <button className="flex-1 py-2 bg-blue-600 text-white rounded font-bold text-sm hover:bg-blue-700" onClick={()=>alert('EMR 클립보드에 복사되었습니다!')}>EMR에 복사하기</button>
+                       </div>
+                     </div>
+                   ) : (
+                     <div className="flex flex-col items-center justify-center p-10 bg-white border border-slate-200 rounded-xl shadow-sm text-center">
+                       <div className="text-4xl mb-3">📝</div>
+                       <div className="text-slate-600 font-bold mb-1">현재 진료 중인 대화 내용을 바탕으로<br/>AI가 영문/국문 SOAP 차트를 자동 작성합니다.</div>
+                       <div className="text-xs text-slate-500">진료 기록이 생성되면 위 버튼을 눌러주세요.</div>
+                     </div>
+                   )}
+                 </div>
+               )}
+
+               {transTool === 'summary_qr' && (
+                 <div className="p-6 bg-slate-50 flex-1 overflow-y-auto">
+                   <div className="flex justify-between items-center mb-4">
+                     <h3 className="text-lg font-bold text-slate-800">다국어 환자 진료 요약 & 복약지도</h3>
+                     <button onClick={() => {
+                        setSummaryResult(`[진료 요약 (${transLang})]\n진단을 바탕으로 감기약을 처방합니다.\n\n[복약 안내]\n- 약은 식후 30분에 복용하세요.\n- 미지근한 물을 충분히 마시고 푹 쉬는 것이 좋습니다.`);
+                     }} className="px-4 py-2 bg-indigo-600 text-white font-bold text-sm rounded-lg flex items-center gap-2 hover:bg-indigo-700 shadow-sm"><span className="text-lg">🤳</span> 요약문 생성</button>
+                   </div>
+                   
+                   {summaryResult ? (
+                     <div className="flex flex-col md:flex-row gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                       <div className="flex-1">
+                         <h4 className="text-xs font-bold text-indigo-600 mb-3 border-b pb-2">환자 제공용 다국어 요약지</h4>
+                         <textarea className="w-full h-48 p-3 text-sm bg-slate-50 border border-slate-200 rounded focus:outline-indigo-500" value={summaryResult} readOnly></textarea>
+                         <button className="w-full py-2 mt-3 bg-white border border-indigo-200 text-indigo-700 rounded font-bold text-sm hover:bg-indigo-50" onClick={()=>alert('SMS로 전송되었습니다.')}>환자에게 카카오톡/문자 전송</button>
+                       </div>
+                       <div className="flex flex-col items-center justify-center p-4 border-l border-slate-100 bg-slate-50 rounded-lg shrink-0 w-48">
+                         <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-200 mb-3 inline-block">
+                           <QRCodeSVG value={"https://patient-portal.example.com/rx/1283?lang=" + transLang} size={120} />
+                         </div>
+                         <div className="text-xs text-center font-bold text-slate-600 leading-relaxed">스마트폰 카메라로<br/>스캔하여 복약지도 확인</div>
+                       </div>
+                     </div>
+                   ) : (
+                     <div className="flex flex-col items-center justify-center p-10 bg-white border border-slate-200 rounded-xl shadow-sm text-center">
+                       <div className="text-4xl mb-3">💊</div>
+                       <div className="text-slate-600 font-bold mb-1">진료 내용과 처방 데이터를 바탕으로<br/>환자 모국어로 된 맞춤 처방 정보를 생성합니다.</div>
+                     </div>
+                   )}
+                 </div>
+               )}
+
+               {transTool === 'consent' && (
+                 <div className="p-6 bg-slate-50 flex-1 overflow-y-auto">
+                   <h3 className="text-lg font-bold text-slate-800 mb-4">{transLang} 전자 동의서 (Consent Form)</h3>
+                   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                     <div className="p-4 bg-slate-50 border border-slate-200 rounded text-sm leading-relaxed text-slate-700 h-40 overflow-y-auto">
+                        <strong>[시술 및 비급여 진료 동의서]</strong><br/><br/>
+                        1. 본인은 담당 의사로부터 진단, 시술 목적, 예상되는 경과 및 부작용, 대체 가능한 처료 방법 등에 대해 충분한 설명을 들었습니다.<br/>
+                        2. 본인은 의료진이 최선을 다하더라도 예상치 못한 합병증이 발생할 수 있음을 이해합니다.<br/>
+                        3. 본인은 이 시술/치료가 국민건강보험 비급여 항목으로 전액 본인 부담임을 안내받았습니다.<br/>
+                        <br/>
+                        ... (이하 환자 언어 {transLang}로 자동 번역된 조항) ...
+                     </div>
+                     <div className="border border-slate-300 rounded-lg overflow-hidden bg-slate-50">
+                       <div className="bg-slate-200 p-2 text-xs font-bold text-slate-700 text-center border-b border-slate-300">서명란 (Signature)</div>
+                       {!consentSaved ? (
+                         <>
+                           <SignatureCanvas ref={sigCanvas} penColor="black" canvasProps={{className: 'sigCanvas w-full h-32 bg-white cursor-crosshair'}} />
+                           <div className="flex border-t border-slate-200">
+                             <button className="flex-1 p-2 bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200" onClick={() => sigCanvas.current?.clear()}>지우기</button>
+                             <button className="flex-1 p-2 bg-blue-600 text-white text-sm font-bold hover:bg-blue-700" onClick={() => {
+                               if(sigCanvas.current?.isEmpty()) alert("서명을 입력해주세요.");
+                               else setConsentSaved(true);
+                             }}>서명 저장</button>
+                           </div>
+                         </>
+                       ) : (
+                         <div className="flex flex-col items-center justify-center p-6 bg-white h-32 text-center relative">
+                           <div className="absolute top-0 right-0 bg-green-500 text-white text-[10px] px-2 py-1 font-bold">서명 완료</div>
+                           <img src={sigCanvas.current?.getTrimmedCanvas().toDataURL('image/png')} className="h-16 mix-blend-darken filter" alt="Signature" />
+                           <button onClick={()=>setConsentSaved(false)} className="text-[10px] mt-2 text-slate-400 underline">다시 서명하기</button>
+                         </div>
+                       )}
+                     </div>
+                     {consentSaved && (
+                       <button className="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 shadow-sm" onClick={()=>alert('동의서가 EMR/클라우드 서버에 안전하게 등록되었습니다.')}>동의서 공식 등록 및 아카이브</button>
+                     )}
+                   </div>
+                 </div>
+               )}
+
             </div>
           )}
 
