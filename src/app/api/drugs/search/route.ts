@@ -69,10 +69,11 @@ export async function POST(req: Request) {
       count: finalItems.length,
       items: finalItems,
     });
-  } catch (error) {
+  } catch (err) {
+    const error = err as Error;
     console.error('Database Search Error:', error);
     return NextResponse.json(
-      { success: false, message: 'DB 검색 중 오류가 발생했습니다.', error: error?.toString(), stack: error?.stack },
+      { success: false, message: 'DB 검색 중 오류가 발생했습니다.', error: error.message, stack: error.stack },
       { status: 500 }
     );
   }
