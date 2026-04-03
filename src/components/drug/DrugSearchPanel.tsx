@@ -86,7 +86,7 @@ export default function DrugSearchPanel() {
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.message || '약제 검색에 실패했습니다.');
+        throw new Error(data.error || data.message || '검색 중 오류가 발생했습니다.');
       }
 
       setItems(Array.isArray(data.items) ? data.items : []);

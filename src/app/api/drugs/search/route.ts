@@ -1,8 +1,5 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-// Prevent multiple instances in dev
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -75,7 +72,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error('Database Search Error:', error);
     return NextResponse.json(
-      { success: false, message: 'DB 검색 중 오류가 발생했습니다.' },
+      { success: false, message: 'DB 검색 중 오류가 발생했습니다.', error: error?.toString(), stack: error?.stack },
       { status: 500 }
     );
   }
