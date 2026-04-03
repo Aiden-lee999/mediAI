@@ -6,8 +6,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { QRCodeSVG } from 'qrcode.react';
 import SignatureCanvas from 'react-signature-canvas';
+import DrugSearchPanel from '@/components/drug/DrugSearchPanel';
 
-type AppView = 'chat' | 'translate' | 'library' | 'rag_review';
+type AppView = 'chat' | 'translate' | 'library' | 'rag_review' | 'drug_search';
 
 type SpeechRecognitionAlternativeLike = {
   transcript: string;
@@ -58,6 +59,86 @@ const PATIENT_UI_TEXT: Record<string, { start: string; stop: string; listening: 
   '러시아어': { start: 'Начать говорить', stop: 'Остановить и перевести', listening: 'Слушаю...', patient: 'Пациент' },
   '베트남어': { start: 'Bắt đầu nói', stop: 'Dừng và Dịch', listening: 'Đang nghe...', patient: 'Bệnh nhân' },
   '몽골어': { start: 'Ярьж эхлэх', stop: 'Зогсоож орчуулах', listening: 'Сонсож байна...', patient: 'Өвчтөн' },
+};
+
+const LOCALIZED_FORMS: Record<string, any> = {
+  '영어': {
+    intakeTitle: "Please enter your symptoms to share with the doctor.",
+    q1: "Q. What are your main symptoms?", p1: "e.g., Headache and fever...",
+    q2: "Q. When did the symptoms start?", p2: "e.g., 3 days ago",
+    q3: "Q. Are you taking any medications or do you have underlying conditions?", p3: "e.g., Taking blood pressure medication",
+    q4: "Q. What is your occupation?", p4: "e.g., Office worker",
+    submit: "Submit to Doctor", submitted: "Intake form submitted.", submittedDesc: "The information will be summarized for the doctor.", retry: "Rewrite",
+    consentTitle: "Consent Form for Treatment",
+    consentText: "1. I have heard sufficient explanation from the attending physician regarding the diagnosis, purpose of the procedure, expected progress, side effects, and alternative treatment options.\n2. I understand that unexpected complications may occur even if the medical staff does their best.",
+    signHere: "Signature", clear: "Clear", save: "Save Signature", signing: "Signed",
+    summaryTitle: "Summary & Medication Guide", generateSummary: "Generate Summary", reqSign: "Please sign."
+  },
+  '중국어': {
+    intakeTitle: "请输入您要告诉医生的症状。",
+    q1: "Q. 您哪里不舒服？（主诉）", p1: "例：头痛发热...",
+    q2: "Q. 症状从什么时候开始的？", p2: "例：3天前",
+    q3: "Q. 您在服用什么药物或有基础疾病吗？", p3: "例：服用高血压药",
+    q4: "Q. 您的职业是什么？", p4: "例：上班族",
+    submit: "提交并发送给医生", submitted: "问诊表已提交。", submittedDesc: "提交的信息将在诊疗时汇总显示在医生屏幕上。", retry: "重新填写",
+    consentTitle: "手术及非医保诊疗同意书",
+    consentText: "1. 本人已从主治医生处充分听取了关于诊断、手术目的、预期进展及副作用、可替代治疗方法等的说明。\n2. 本人理解即使医疗团队尽最大努力，也可能发生意想不到的并发症。",
+    signHere: "签名栏 (Signature)", clear: "清除", save: "保存签名", signing: "签名完成",
+    summaryTitle: "患者诊疗摘要和用药指导", generateSummary: "生成摘要", reqSign: "请签名。"
+  },
+  '일본어': {
+    intakeTitle: "医師に伝える症状を入力してください。",
+    q1: "Q. どこが具合が悪いですか？（主訴）", p1: "例：頭痛や熱があります...",
+    q2: "Q. 症状はいつから始まりましたか？", p2: "例：3日前から",
+    q3: "Q. 服用中の薬や持病はありますか？", p3: "例：高血圧の薬を服用中",
+    q4: "Q. 職業は何ですか？", p4: "例：会社員",
+    submit: "送信して医師に伝える", submitted: "問診票が送信されました。", submittedDesc: "送信された情報は、診察時に医師の画面に要約して表示されます。", retry: "再入力する",
+    consentTitle: "施術および自由診療同意書",
+    consentText: "1. 私は担当医から診断、施術の目的、予想される経過および副作用、代替可能な治療法などについて十分な説明を受けました。\n2. 私は、医療スタッフが最善を尽くしても予期せぬ合併症が発生する可能性があることを理解しています。",
+    signHere: "署名欄 (Signature)", clear: "消去", save: "署名保存", signing: "署名完了",
+    summaryTitle: "患者診療要約および服薬指導", generateSummary: "要約生成", reqSign: "署名を入力してください。"
+  },
+  '러시아어': {
+    intakeTitle: "Пожалуйста, введите ваши симптомы для врача.",
+    q1: "В. На что жалуетесь? (Основная жалоба)", p1: "напр., Болит голова и температура...",
+    q2: "В. Когда начались симптомы?", p2: "напр., 3 дня назад",
+    q3: "В. Принимаете ли вы лекарства или есть ли у вас хронические заболевания?", p3: "напр., Принимаю лекарства от давления",
+    q4: "В. Кем вы работаете?", p4: "напр., Офисный работник",
+    submit: "Отправить врачу", submitted: "Анкета отправлена.", submittedDesc: "Информация будет обобщена для врача.", retry: "Заполнить заново",
+    consentTitle: "Форма согласия на лечение",
+    consentText: "1. Я выслушал(а) достаточное объяснение от врача о диагнозе, цели процедуры, ожидаемом течении, побочных эффектах и альтернативах.\n2. Я понимаю, что осложнения могут возникнуть, даже если медицинский персонал сделает всё возможное.",
+    signHere: "Подпись", clear: "Очистить", save: "Сохранить", signing: "Подписано",
+    summaryTitle: "Краткое изложение и инструкции по приему лекарств", generateSummary: "Создать сводку", reqSign: "Пожалуйста, распишитесь."
+  },
+  '베트남어': {
+    intakeTitle: "Vui lòng nhập triệu chứng của bạn để báo cho bác sĩ.",
+    q1: "H. Bạn cảm thấy khó chịu ở đâu?", p1: "VD: Đau đầu và bị sốt...",
+    q2: "H. Triệu chứng bắt đầu từ khi nào?", p2: "VD: 3 ngày trước",
+    q3: "H. Bạn có đang dùng thuốc hay có bệnh lý nền nào không?", p3: "VD: Đang dùng thuốc huyết áp",
+    q4: "H. Nghề nghiệp của bạn là gì?", p4: "VD: Nhân viên văn phòng",
+    submit: "Gửi cho Bác sĩ", submitted: "Phiếu khám đã được gửi.", submittedDesc: "Thông tin sẽ được tóm tắt cho bác sĩ.", retry: "Viết lại",
+    consentTitle: "Mẫu Chấp thuận Điều trị",
+    consentText: "1. Tôi đã nghe giải thích đầy đủ từ bác sĩ về chẩn đoán, mục đích, tiến triển dự kiến, tác dụng phụ và thay thế.\n2. Tôi hiểu rằng biến chứng có thể xảy ra ngay cả khi nhân viên y tế cố gắng hết sức.",
+    signHere: "Chữ ký", clear: "Xóa", save: "Lưu Chữ ký", signing: "Đã ký",
+    summaryTitle: "Bản tóm tắt & Hướng dẫn sử dụng thuốc", generateSummary: "Tạo tóm tắt", reqSign: "Vui lòng ký tên."
+  },
+  '몽골어': {
+    intakeTitle: "Эмчид мэдэгдэх шинж тэмдгээ оруулна уу.",
+    q1: "А. Танд хаана эвгүй байна вэ?", p1: "Ж.нь: Толгой өвдөж, халуурч байна...",
+    q2: "А. Шинж тэмдэг хэзээнээс эхэлсэн бэ?", p2: "Ж.нь: 3 хоногийн өмнөөс",
+    q3: "А. Та эм ууж байгаа эсвэл суурь өвчтэй юу?", p3: "Ж.нь: Цусны даралтын эм ууж байгаа",
+    q4: "А. Таны мэргэжил юу вэ?", p4: "Ж.нь: Оффисын ажилтан",
+    submit: "Эмчид илгээх", submitted: "Асуумж илгээгдлээ.", submittedDesc: "Мэдээллийг эмчийн дэлгэц дээр хураангуйлан харуулах болно.", retry: "Дахин бичих",
+    consentTitle: "Эмчилгээний зөвшөөрлийн хуудас",
+    consentText: "1. Би эмчээс онош, зорилго, гаж нөлөө, эмчилгээний өөр хувилбаруудын талаар тайлбар сонссон.\n2. Эмнэлгийн ажилтнууд бүх хүчээ дайчилсан ч хүндрэл гарч болзошгүйг би ойлгож байна.",
+    signHere: "Гарын үсэг", clear: "Устгах", save: "Хадгалах", signing: "Зурсан",
+    summaryTitle: "Хураангуй болон эмийн заавар", generateSummary: "Хураангуй үүсгэх", reqSign: "Гарын үсгээ зурна уу."
+  }
+};
+
+const getLocalizedText = (lang: string, key: string) => {
+  const form = LOCALIZED_FORMS[lang] || LOCALIZED_FORMS['영어'];
+  return form[key] || LOCALIZED_FORMS['영어'][key] || 'Text not found';
 };
 
 const RECOGNITION_LANGUAGE = 'ko-KR';
@@ -180,7 +261,7 @@ function DashboardPageContent() {
   const [summaryResult, setSummaryResult] = useState('');
   const sigCanvas = useRef<any>(null);
   const [consentSaved, setConsentSaved] = useState(false);
-  const [intakeForm, setIntakeForm] = useState({ symptom: '', duration: '', history: '' });
+  const [intakeForm, setIntakeForm] = useState({ symptom: '', duration: '', history: '', occupation: '' });
   const [isIntakeSubmitted, setIsIntakeSubmitted] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -211,7 +292,7 @@ function DashboardPageContent() {
 
   useEffect(() => {
     const nextView = searchParams.get('view');
-    if (nextView === 'translate' || nextView === 'chat' || nextView === 'library' || nextView === 'rag_review') {
+    if (nextView === 'translate' || nextView === 'chat' || nextView === 'library' || nextView === 'rag_review' || nextView === 'drug_search') {
       setView(nextView);
       return;
     }
@@ -612,7 +693,7 @@ function DashboardPageContent() {
                      <img src={meta_json.image_url} alt="약물 이미지" className="w-full h-full object-contain p-1 rounded-lg" />
                    ) : (
                      <>
-                       <div className="text-xl mb-1">💊</div>
+                       <div className="text-xl mb-1"></div>
                        <div className="text-[10px] text-slate-400 font-medium">약물 이미지 (준비중)</div>
                      </>
                    )}
@@ -772,12 +853,12 @@ function DashboardPageContent() {
         </div>
         
         <button onClick={handleCreateNewChat} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg mb-6 flex items-center justify-center gap-2">
-           <span className="text-lg">+</span> 새로운 분석
+           <span className="text-lg">+</span> 새 채팅
         </button>
 
         <div className="flex flex-col gap-2 mb-8 text-sm text-slate-300">
-           <button onClick={() => updateView('chat')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='chat'?'bg-slate-800 text-white':''}`}>
-               전문가 어시스턴트
+           <button onClick={() => updateView('drug_search')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='drug_search'?'bg-slate-800 text-white':''}`}>
+               약제 조회
            </button>
              <button onClick={() => updateView('translate')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='translate'?'bg-slate-800 text-white':''}`}>
                다국어 진료 어시스턴트
@@ -824,10 +905,10 @@ function DashboardPageContent() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-               {view === 'chat' ? '전문 의학 어시스턴트' : view === 'translate' ? '다국어 진료 어시스턴트' : view === 'rag_review' ? 'RAG 기반 논문/가이드라인 검색 및 리뷰' : '내 라이브러리'}    
+               {view === 'chat' ? '전문 의학 어시스턴트' : view === 'drug_search' ? '약제 조회 및 비교' : view === 'translate' ? '다국어 진료 어시스턴트' : view === 'rag_review' ? 'RAG 기반 논문/가이드라인 검색 및 리뷰' : '내 라이브러리'}    
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-               {view === 'chat' ? '진료, 연구, 약물 보조 및 종합 인텔리전스' : view === 'translate' ? '복약지도, 설명, 통역을 위한 실시간 음성 번역' : view === 'rag_review' ? '최신 논문 기반 응답 및 동료 의사 리뷰 워크플로우 연동' : '저장된 중요 레퍼런스 모음'}
+               {view === 'chat' ? '진료, 연구, 약물 보조 및 종합 인텔리전스' : view === 'drug_search' ? '조제약 및 의약품 조회, 비교 (DUR 연동 예정)' : view === 'translate' ? '복약지도, 설명, 통역을 위한 실시간 음성 번역' : view === 'rag_review' ? '최신 논문 기반 응답 및 동료 의사 리뷰 워크플로우 연동' : '저장된 중요 레퍼런스 모음'}
             </p>
           </div>
           {view === 'chat' && messages.length > 0 && (
@@ -839,7 +920,12 @@ function DashboardPageContent() {
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50" ref={scrollRef}>
           
-          {/* ===================== CHAT VIEW ===================== */}
+          {/* ===================== DRUG SEARCH VIEW ===================== */}
+            {view === 'drug_search' && (
+              <DrugSearchPanel />
+            )}
+
+{/* ===================== CHAT VIEW ===================== */}
           {view === 'chat' && (
             <>
               {messages.length === 0 ? (
@@ -942,11 +1028,11 @@ function DashboardPageContent() {
                {/* Header for Translate */}
                <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
                  <div className="flex gap-2">
-                   <button onClick={() => setTransTool('chat')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'chat' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>📍 실시간 통역</button>
-                   <button onClick={() => setTransTool('pre_intake')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'pre_intake' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>📝 문진표</button>
-                   <button onClick={() => setTransTool('charting')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'charting' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>📋 AI 자동 차팅</button>
-                   <button onClick={() => setTransTool('summary_qr')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'summary_qr' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>📱 요약 QR</button>
-                   <button onClick={() => setTransTool('consent')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'consent' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>✍️ 전자 동의서</button>
+                   <button onClick={() => setTransTool('chat')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'chat' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>실시간 통역</button>
+                   <button onClick={() => setTransTool('pre_intake')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'pre_intake' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>문진표</button>
+                   <button onClick={() => setTransTool('charting')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'charting' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>AI 자동 차팅</button>
+                   <button onClick={() => setTransTool('summary_qr')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'summary_qr' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>요약 QR</button>
+                   <button onClick={() => setTransTool('consent')} className={`px-3 py-1.5 text-sm font-bold rounded-lg ${transTool === 'consent' ? 'bg-blue-600 text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}>전자 동의서</button>
                  </div>
                  <div className="w-full sm:w-auto">
                    <select className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 shadow-sm" value={transLang} onChange={(e) => setTransLang(e.target.value)}>
@@ -1056,30 +1142,42 @@ function DashboardPageContent() {
                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
                      {!isIntakeSubmitted ? (
                      <>
-                       <div className="text-sm font-bold text-indigo-700">🩺 의사에게 전달할 증상을 입력해주세요.</div>
-                       <div>
-                         <label className="block text-xs font-semibold text-slate-600 mb-1">Q. 어디가 불편하신가요? (주호소)</label>
-                         <textarea className="w-full p-2 border border-slate-300 rounded bg-slate-50 focus:bg-white" rows={2} value={intakeForm.symptom} onChange={e=>setIntakeForm({...intakeForm, symptom:e.target.value})} placeholder="예: 머리가 아프고 열이 납니다..."></textarea>
-                       </div>
-                       <div>
-                         <label className="block text-xs font-semibold text-slate-600 mb-1">Q. 증상이 কবে부터 시작되었나요?</label>
-                         <input type="text" className="w-full p-2 border border-slate-300 rounded bg-slate-50 focus:bg-white" value={intakeForm.duration} onChange={e=>setIntakeForm({...intakeForm, duration:e.target.value})} placeholder="예: 3일 전부터" />
-                       </div>
-                       <div>
-                         <label className="block text-xs font-semibold text-slate-600 mb-1">Q. 복용 중인 약이나 기저질환이 있나요?</label>
-                         <input type="text" className="w-full p-2 border border-slate-300 rounded bg-slate-50 focus:bg-white" value={intakeForm.history} onChange={e=>setIntakeForm({...intakeForm, history:e.target.value})} placeholder="예: 고혈압 약 복용중" />
-                       </div>
-                       <button onClick={() => {
-                         setIsIntakeSubmitted(true);
-                         setTranslationChat(prev => [...prev, { id: Date.now(), role: 'patient', text: `문진 요약:\n증상: ${intakeForm.symptom}\n기간: ${intakeForm.duration}\n병력: ${intakeForm.history}`, translatedText: `[사전 문진 요약]\n- 주호소: ${intakeForm.symptom || '없음'}\n- 발생시기: ${intakeForm.duration || '없음'}\n- 기저질환/복용약: ${intakeForm.history || '없음'}`, note: 'AI 분석: 문진표가 등록되었습니다.' }]);
-                       }} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700">제출 및 원장님께 전송</button>
+                       <div className="text-sm font-bold text-indigo-700">{getLocalizedText(transLang, 'intakeTitle')}</div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">{getLocalizedText(transLang, 'q1')}</label>
+                        <textarea className="w-full p-2 border border-slate-300 rounded bg-slate-50 focus:bg-white" rows={2} value={intakeForm.symptom} onChange={e=>setIntakeForm({...intakeForm, symptom:e.target.value})} placeholder={getLocalizedText(transLang, 'p1')}></textarea>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">{getLocalizedText(transLang, 'q2')}</label>
+                        <input type="text" className="w-full p-2 border border-slate-300 rounded bg-slate-50 focus:bg-white" value={intakeForm.duration} onChange={e=>setIntakeForm({...intakeForm, duration:e.target.value})} placeholder={getLocalizedText(transLang, 'p2')} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">{getLocalizedText(transLang, 'q3')}</label>
+                        <input type="text" className="w-full p-2 border border-slate-300 rounded bg-slate-50 focus:bg-white" value={intakeForm.history} onChange={e=>setIntakeForm({...intakeForm, history:e.target.value})} placeholder={getLocalizedText(transLang, 'p3')} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">{getLocalizedText(transLang, 'q4')}</label>
+                        <input type="text" className="w-full p-2 border border-slate-300 rounded bg-slate-50 focus:bg-white" value={intakeForm.occupation} onChange={e=>setIntakeForm({...intakeForm, occupation:e.target.value})} placeholder={getLocalizedText(transLang, 'p4')} />
+                      </div>
+                      <button onClick={async () => {
+                        try {
+                          const res = await fetch('/api/translate/intake', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ lang: transLang, symptom: intakeForm.symptom, duration: intakeForm.duration, history: intakeForm.history, occupation: intakeForm.occupation, chatHistory: translationChat })
+                          });
+                          if (res.ok) {
+                            setIsIntakeSubmitted(true);
+                          }
+                        } catch (error) { console.error(error); }
+                      }} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700">{getLocalizedText(transLang, 'submit')}</button>
                      </>
                      ) : (
                        <div className="text-center py-6">
-                         <div className="text-4xl mb-2">✅</div>
-                         <div className="font-bold text-slate-800">문진표가 제출되었습니다.</div>
-                         <div className="text-sm text-slate-500 mt-2">제출된 정보는 진료 시 원장님 화면에 요약되어 표기됩니다.</div>
-                         <button onClick={()=>setIsIntakeSubmitted(false)} className="mt-4 text-xs text-blue-600 underline">다시 작성하기</button>
+                        <div className="text-4xl mb-2">✅</div>
+                        <div className="font-bold text-slate-800">{getLocalizedText(transLang, 'submitted')}</div>
+                        <div className="text-sm text-slate-500 mt-2">{getLocalizedText(transLang, 'submittedDesc')}</div>
+                        <button onClick={()=>setIsIntakeSubmitted(false)} className="mt-4 text-xs text-blue-600 underline">{getLocalizedText(transLang, 'retry')}</button>
                        </div>
                      )}
                    </div>
@@ -1090,9 +1188,22 @@ function DashboardPageContent() {
                  <div className="p-6 bg-slate-50 flex-1 overflow-y-auto">
                    <div className="flex justify-between items-center mb-4">
                      <h3 className="text-lg font-bold text-slate-800">AI 자동 차팅 (SOAP Note)</h3>
-                     <button onClick={() => {
-                        setChartingResult("S (Subjective):\n- 환자는 두통과 미열을 호소함\n- 3일 전부터 증상 지속됨\n- 기저질환 없음\n\nO (Objective):\n- 혈압 정상, 특이소견 관찰 안됨\n- 진료 중 의사소통 양호\n\nA (Assessment):\n- Common Cold (감기)\n- Tension Headache 의심\n\nP (Plan):\n- 해열진통제(Acetaminophen) 3일치 처방\n- 증상 호전 없을 시 재내원 안내");
-                     }} className="px-4 py-2 bg-blue-600 text-white font-bold text-sm rounded-lg flex items-center gap-2 hover:bg-blue-700 shadow-sm"><span className="text-lg">✨</span> AI 차트 생성</button>
+                     <button onClick={async () => {
+                        try {
+                          setChartingResult("AI가 차트를 생성하는 중입니다...");
+                          const res = await fetch('/api/translate/chart', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ chatHistory: translationChat, lang: transLang })
+                          });
+                          const data = await res.json();
+                          if (data.result) setChartingResult(data.result);
+                          else setChartingResult("생성 오류: " + (data.error || "알 수 없는 오류"));
+                        } catch (err) {
+                          console.error(err);
+                          setChartingResult("생성 오류");
+                        }
+                     }} className="px-4 py-2 bg-blue-600 text-white font-bold text-sm rounded-lg flex items-center gap-2 hover:bg-blue-700 shadow-sm"><span className="text-lg"></span> AI 차트 생성</button>
                    </div>
                    
                    {chartingResult ? (
@@ -1106,7 +1217,7 @@ function DashboardPageContent() {
                      </div>
                    ) : (
                      <div className="flex flex-col items-center justify-center p-10 bg-white border border-slate-200 rounded-xl shadow-sm text-center">
-                       <div className="text-4xl mb-3">📝</div>
+                       <div className="text-4xl mb-3"></div>
                        <div className="text-slate-600 font-bold mb-1">현재 진료 중인 대화 내용을 바탕으로<br/>AI가 영문/국문 SOAP 차트를 자동 작성합니다.</div>
                        <div className="text-xs text-slate-500">진료 기록이 생성되면 위 버튼을 눌러주세요.</div>
                      </div>
@@ -1117,10 +1228,23 @@ function DashboardPageContent() {
                {transTool === 'summary_qr' && (
                  <div className="p-6 bg-slate-50 flex-1 overflow-y-auto">
                    <div className="flex justify-between items-center mb-4">
-                     <h3 className="text-lg font-bold text-slate-800">다국어 환자 진료 요약 & 복약지도</h3>
-                     <button onClick={() => {
-                        setSummaryResult(`[진료 요약 (${transLang})]\n진단을 바탕으로 감기약을 처방합니다.\n\n[복약 안내]\n- 약은 식후 30분에 복용하세요.\n- 미지근한 물을 충분히 마시고 푹 쉬는 것이 좋습니다.`);
-                     }} className="px-4 py-2 bg-indigo-600 text-white font-bold text-sm rounded-lg flex items-center gap-2 hover:bg-indigo-700 shadow-sm"><span className="text-lg">🤳</span> 요약문 생성</button>
+                     <h3 className="text-lg font-bold text-slate-800">{getLocalizedText(transLang, 'summaryTitle')}</h3>
+                     <button onClick={async () => {
+                        try {
+                          setSummaryResult("요약문을 생성하는 중입니다...");
+                          const res = await fetch('/api/translate/summary', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ chatHistory: translationChat, lang: transLang })
+                          });
+                          const data = await res.json();
+                          if (data.result) setSummaryResult(data.result);
+                          else setSummaryResult("생성 오류: " + (data.error || "알 수 없는 오류"));
+                        } catch (err) {
+                          console.error(err);
+                          setSummaryResult("생성 오류");
+                        }
+                     }} className="px-4 py-2 bg-indigo-600 text-white font-bold text-sm rounded-lg flex items-center gap-2 hover:bg-indigo-700 shadow-sm"><span className="text-lg"></span> {getLocalizedText(transLang, 'generateSummary')}</button>
                    </div>
                    
                    {summaryResult ? (
@@ -1139,7 +1263,7 @@ function DashboardPageContent() {
                      </div>
                    ) : (
                      <div className="flex flex-col items-center justify-center p-10 bg-white border border-slate-200 rounded-xl shadow-sm text-center">
-                       <div className="text-4xl mb-3">💊</div>
+                       <div className="text-4xl mb-3"></div>
                        <div className="text-slate-600 font-bold mb-1">진료 내용과 처방 데이터를 바탕으로<br/>환자 모국어로 된 맞춤 처방 정보를 생성합니다.</div>
                      </div>
                    )}
@@ -1148,34 +1272,39 @@ function DashboardPageContent() {
 
                {transTool === 'consent' && (
                  <div className="p-6 bg-slate-50 flex-1 overflow-y-auto">
-                   <h3 className="text-lg font-bold text-slate-800 mb-4">{transLang} 전자 동의서 (Consent Form)</h3>
-                   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                     <div className="p-4 bg-slate-50 border border-slate-200 rounded text-sm leading-relaxed text-slate-700 h-40 overflow-y-auto">
-                        <strong>[시술 및 비급여 진료 동의서]</strong><br/><br/>
-                        1. 본인은 담당 의사로부터 진단, 시술 목적, 예상되는 경과 및 부작용, 대체 가능한 처료 방법 등에 대해 충분한 설명을 들었습니다.<br/>
-                        2. 본인은 의료진이 최선을 다하더라도 예상치 못한 합병증이 발생할 수 있음을 이해합니다.<br/>
+                   <h3 className="text-lg font-bold text-slate-800 mb-4">{transLang} {getLocalizedText(transLang, 'consentTitle')}</h3>
+                      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded text-sm leading-relaxed text-slate-700 h-40 overflow-y-auto">
+                           <strong>[{getLocalizedText(transLang, 'consentTitle')}]</strong><br/><br/>
+                           <span className="whitespace-pre-wrap">{getLocalizedText(transLang, 'consentText')}</span><br/>
                         3. 본인은 이 시술/치료가 국민건강보험 비급여 항목으로 전액 본인 부담임을 안내받았습니다.<br/>
                         <br/>
                         ... (이하 환자 언어 {transLang}로 자동 번역된 조항) ...
                      </div>
                      <div className="border border-slate-300 rounded-lg overflow-hidden bg-slate-50">
-                       <div className="bg-slate-200 p-2 text-xs font-bold text-slate-700 text-center border-b border-slate-300">서명란 (Signature)</div>
+                       <div className="bg-slate-200 p-2 text-xs font-bold text-slate-700 text-center border-b border-slate-300">{getLocalizedText(transLang, 'signHere')}</div>
                        {!consentSaved ? (
                          <>
                            <SignatureCanvas ref={sigCanvas} penColor="black" canvasProps={{className: 'sigCanvas w-full h-32 bg-white cursor-crosshair'}} />
                            <div className="flex border-t border-slate-200">
-                             <button className="flex-1 p-2 bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200" onClick={() => sigCanvas.current?.clear()}>지우기</button>
+                             <button className="flex-1 p-2 bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200" onClick={() => sigCanvas.current?.clear()}>{getLocalizedText(transLang, 'clear')}</button>
                              <button className="flex-1 p-2 bg-blue-600 text-white text-sm font-bold hover:bg-blue-700" onClick={() => {
-                               if(sigCanvas.current?.isEmpty()) alert("서명을 입력해주세요.");
-                               else setConsentSaved(true);
-                             }}>서명 저장</button>
+                               if(sigCanvas.current?.isEmpty()) alert("${getLocalizedText(transLang, 'reqSign')}");
+                               else {
+                                 fetch('/api/translate/consent', {
+                                   method: 'POST',
+                                   headers: { 'Content-Type': 'application/json' },
+                                   body: JSON.stringify({ lang: transLang, signature: sigCanvas.current.getTrimmedCanvas().toDataURL('image/png'), content: "Consent Form" })
+                                 }).then(() => setConsentSaved(true)).catch(console.error);
+                               }
+                             }}>{getLocalizedText(transLang, 'save')}</button>
                            </div>
                          </>
                        ) : (
                          <div className="flex flex-col items-center justify-center p-6 bg-white h-32 text-center relative">
-                           <div className="absolute top-0 right-0 bg-green-500 text-white text-[10px] px-2 py-1 font-bold">서명 완료</div>
+                           <div className="absolute top-0 right-0 bg-green-500 text-white text-[10px] px-2 py-1 font-bold">{getLocalizedText(transLang, 'signing')}</div>
                            <img src={sigCanvas.current?.getTrimmedCanvas().toDataURL('image/png')} className="h-16 mix-blend-darken filter" alt="Signature" />
-                           <button onClick={()=>setConsentSaved(false)} className="text-[10px] mt-2 text-slate-400 underline">다시 서명하기</button>
+                           <button onClick={()=>setConsentSaved(false)} className="text-[10px] mt-2 text-slate-400 underline">{getLocalizedText(transLang, 'retry')}</button>
                          </div>
                        )}
                      </div>
@@ -1415,7 +1544,7 @@ function DashboardPageContent() {
            <div className="bg-white w-full max-w-4xl max-h-[85vh] rounded-xl shadow-xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
               <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
                  <div className="flex items-center gap-2">
-                   <h3 className="font-bold text-slate-800 text-lg">💊 관련 약물 전체보기</h3>
+                   <h3 className="font-bold text-slate-800 text-lg"> 관련 약물 전체보기</h3>
                    <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-semibold">총 {selectedAllDrugs.length}건 검색됨</span>
                  </div>
                  <button onClick={() => setAllDrugsModalOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
@@ -1446,3 +1575,17 @@ export default function DashboardPage() {
     </Suspense>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
