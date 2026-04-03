@@ -22,7 +22,7 @@ let cache: DrugMasterRow[] | null = null;
 let cachedAt = 0;
 const CACHE_TTL_MS = 1000 * 60 * 10;
 
-function parseCsvLine(line: string) {
+export function parseCsvLine(line: string) {
   const result: string[] = [];
   let current = '';
   let inQuotes = false;
@@ -79,7 +79,7 @@ async function readCsvText(filePath: string) {
   return scoreCsvHeader(eucKr) >= scoreCsvHeader(utf8) ? eucKr : utf8;
 }
 
-function pick(row: Record<string, string>, keys: string[]) {
+export function pick(row: Record<string, string>, keys: string[]) {
   for (const key of keys) {
     const value = row[key];
     if (value && value.trim()) return value.trim();
@@ -91,7 +91,7 @@ function normHeader(header: string) {
   return header.replace(/\s+/g, '').toLowerCase();
 }
 
-function findHeaderByPatterns(headers: string[], patterns: string[]) {
+export function findHeaderByPatterns(headers: string[], patterns: string[]) {
   const normalized = headers.map((header) => ({
     original: header,
     normalized: normHeader(header),
