@@ -59,23 +59,26 @@ async function fetchIngredientScan(productKw: string, ingrKw: string, compKw: st
   const easyDrug = PUBLIC_DRUG_API_ENDPOINTS.find((s) => s.baseUrl.includes('DrbEasyDrugInfoService'));
   if (!easyDrug || (!productKw.trim() && !ingrKw.trim())) return [];
 
-  // 이전의 query parameter 모두 전달 패턴 (각 API 파라미터가 다를 수 있으므로 넓게 전달)
+  const queryParams: Record<string, string | number> = { numOfRows: 100, pageNo: 1 };
+  if (productKw.trim()) {
+    queryParams.itemName = productKw.trim();
+    queryParams.item_name = productKw.trim();
+  }
+  if (ingrKw.trim()) {
+    queryParams.ingrName = ingrKw.trim();
+    queryParams.ingr_name = ingrKw.trim();
+  }
+  if (compKw.trim()) {
+    queryParams.entpName = compKw.trim();
+    queryParams.entp_name = compKw.trim();
+  }
+
   try {
     const payload = await callPublicDrugApi({
       serviceName: easyDrug.serviceName,
       baseUrl: easyDrug.baseUrl,
       operation: '/getDrbEasyDrugList',
-      query: { 
-        itemName: productKw, 
-        item_name: productKw,
-        itemNm: productKw,
-        ingrName: ingrKw,
-        ingr_name: ingrKw,
-        entpName: compKw,
-        entp_name: compKw,
-        numOfRows: 100, 
-        pageNo: 1 
-      },
+      query: queryParams,
     });
     return extractItems(payload);
   } catch (err) {
@@ -114,7 +117,7 @@ export async function POST(req: Request) {
     // DB 데이터가 비어있어도 공공데이터 갱신시도를 같이 한다.
     const [fetchedUsageMap, fetchedIngredients, priceMap] = await Promise.all([
       targetKeyword ? fetchUsageScan(targetKeyword) : Promise.resolve({}),
-      (productName || ingredientName) ? fetchIngredientScan(productName, ingredientName || productName, company) : Promise.resolve([]),
+      (productName || ingredientName) ? fetchIngredientScan(productName, ingredientName, company) : Promise.resolve([]),
       loadDrugPrices().catch(() => new Map<string, string>())
     ]);
 
@@ -154,7 +157,16 @@ export async function POST(req: Request) {
       let p = (item.priceLabel || '').trim();
       const c = (item.reimbursement || '').trim() || '비급여';
       
-      if (p && /[0-9]/.test(p)) {
+      const dbPcode = String(item.standardCode || item.id || '');
+      const dynamicPrice = dbPcode ? priceMap.get(dbPcode) : undefined;
+      
+      if (!p || p === '가격정보없음') {
+         if (dynamicPrice) {
+             p = `${dynamicPrice}원`;
+         }
+      }
+
+      if (p && /[0-9]/.test(p) && p !== '가격정보없음') {
         if (!p.includes('원')) p += '원';
       } else {
         p = '가격정보없음';
