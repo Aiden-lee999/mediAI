@@ -10,9 +10,10 @@ type DrugItem = {
   priceLabel: string;
   releaseDate: string;
   usageFrequency: number;
+  brandClass?: '오리지널(대장약)' | '복제약(제네릭)';
 };
 
-type SortKey = 'price' | 'releaseDate' | 'usageFrequency';
+type SortKey = 'price' | 'releaseDate' | 'usageFrequency' | 'brandClass';
 type SortDirection = 'asc' | 'desc';
 
 function parsePrice(value: string) {
@@ -61,6 +62,9 @@ export default function DrugSearchPanel() {
       } else if (sortKey === 'releaseDate') {
         av = parseDate(a.releaseDate);
         bv = parseDate(b.releaseDate);
+      } else if (sortKey === 'brandClass') {
+        av = a.brandClass === '오리지널(대장약)' ? 0 : 1;
+        bv = b.brandClass === '오리지널(대장약)' ? 0 : 1;
       } else {
         av = a.usageFrequency || 0;
         bv = b.usageFrequency || 0;
@@ -175,6 +179,7 @@ export default function DrugSearchPanel() {
               className="rounded border border-slate-300 px-2 py-1"
             >
               <option value="price">가격</option>
+              <option value="brandClass">대장약/복제약</option>
               <option value="releaseDate">출시일</option>
               <option value="usageFrequency">사용빈도</option>
             </select>
@@ -195,6 +200,7 @@ export default function DrugSearchPanel() {
               <tr>
                 <th className="px-3 py-2 text-left">제품명</th>
                 <th className="px-3 py-2 text-left">가격/급여구분</th>
+                <th className="px-3 py-2 text-left">구분</th>
                 <th className="px-3 py-2 text-left">주성분</th>
                 <th className="px-3 py-2 text-left">제조사</th>
                 <th className="px-3 py-2 text-left">처방빈도(공공값)</th>
@@ -205,6 +211,7 @@ export default function DrugSearchPanel() {
                 <tr key={item.id} className="border-t hover:bg-blue-50">
                   <td className="px-3 py-2 font-semibold text-blue-700">{item.productName || '-'}</td>
                   <td className="px-3 py-2">{item.priceLabel || '-'}</td>
+                  <td className="px-3 py-2">{item.brandClass || '복제약(제네릭)'}</td>
                   <td className="px-3 py-2">{item.ingredientName || '-'}</td>
                   <td className="px-3 py-2">{item.company || '-'}</td>
                   <td className="px-3 py-2">{getUsageFrequencyRange(item.usageFrequency)}</td>
@@ -212,7 +219,7 @@ export default function DrugSearchPanel() {
               ))}
               {!loading && sortedItems.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-3 py-8 text-center text-slate-500">
                     검색 결과가 없습니다.
                   </td>
                 </tr>

@@ -1,56 +1,84 @@
-import axios from 'axios';
-import * as https from 'https';
+import { prisma } from '@/lib/prisma';
+
+type RawDrugJson = {
+  itemImage?: string;
+  BIG_ITEM_IMAGE_DOCID?: string;
+  SMALL_ITEM_IMAGE_DOCID?: string;
+};
+
+function extractDrugQuery(input: string): string {
+  const stopwords = new Set<string>([
+    '\uC57D',
+    '\uC57D\uAC00',
+    '\uAC00\uACA9',
+    '\uC774\uBBF8\uC9C0',
+    '\uC54C\uB824\uC918',
+    '\uBD80\uC791\uC6A9',
+    '\uD6A8\uACFC',
+    '\uC5D0',
+    '\uB300\uD574',
+  ]);
+
+  const tokens = input
+    .replace(/[.,!?/\\()[\]{}:;"']/g, ' ')
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const candidate = tokens.find((token) => token.length >= 2 && !stopwords.has(token));
+  return candidate ?? '';
+}
 
 export async function fetchDrugInfo(drugName: string) {
   try {
-    const agent = new https.Agent({ rejectUnauthorized: false });
-    
-    // 단순화된 검색어 추출
-    const query = drugName.replace(/약가|가격|이미지|얼마야|알려줘|부작용|효과/gi, '').trim().split(' ')[0];
-    
-    const searchUrl = `https://nedrug.mfds.go.kr/searchDrug?searchYn=true&searchOption=ST1&itemName=${encodeURIComponent(query)}`;
-    const res = await axios.get(searchUrl, {
-      httpsAgent: agent,
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
-    });
-    
-    const parsedData = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-    const list = parsedData.list || [];
-    
-    if (list.length === 0) return null;
+    const query = extractDrugQuery(drugName || '');
+    if (!query) return null;
 
-    const target = list.find((x: any) => x.ITEM_NAME.includes(query)) || list[0];
-    
-    let imageUrl = "https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/1OKRXo9l4D5"; // 타이레놀 기본 이미지 fallback
-    if (target.BIG_ITEM_IMAGE_DOCID || target.SMALL_ITEM_IMAGE_DOCID) {
-      const docId = target.BIG_ITEM_IMAGE_DOCID || target.SMALL_ITEM_IMAGE_DOCID;
-      imageUrl = `https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/${docId}`;
-    } else {
-      // 이미지 docId가 없는 경우 타 약물 랜덤 매칭을 방지하기 위해 기본 placeholder 사용
-      imageUrl = "https://via.placeholder.com/400x200.png?text=No+Image+Available";
+    const target = await prisma.drug.findFirst({
+      where: {
+        productName: { contains: query, mode: 'insensitive' },
+      },
+      orderBy: {
+        usageFrequency: 'desc',
+      },
+    });
+
+    if (!target) return null;
+
+    let imageUrl = 'https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/1OKRXo9l4D5';
+    if (target.rawJson) {
+      try {
+        const parsed = JSON.parse(target.rawJson) as RawDrugJson;
+        const docId = parsed.itemImage || parsed.BIG_ITEM_IMAGE_DOCID || parsed.SMALL_ITEM_IMAGE_DOCID;
+        if (docId) {
+          imageUrl = `https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/${String(docId)}`;
+        }
+      } catch {
+        // Keep fallback image URL when JSON parsing fails.
+      }
     }
 
-    const detailUrl = `https://nedrug.mfds.go.kr/pbp/CCBBB01/getItemDetail?itemSeq=${target.ITEM_SEQ}`;
-    const detailRes = await axios.get(detailUrl, {
-      httpsAgent: agent,
-      headers: { "User-Agent": "Mozilla/5.0" }
-    });
-    
-    const item = detailRes.data?.item || {};
-    let priceInfo = "정보없음 (일반비급여)";
-    if (item.maxAmt) {
-      priceInfo = `${item.maxAmt}원/단위 (급여상한)`;
+    let priceInfo = 'price unavailable (non-reimbursed)';
+    if (target.priceLabel?.trim()) {
+      priceInfo = target.priceLabel.trim();
+    } else if (target.reimbursement?.trim() && target.reimbursement !== '\uBE44\uAE09\uC5EC') {
+      priceInfo = `${target.reimbursement} (reimbursement cap)`;
     }
+
+    const productName = target.productName || 'unknown product';
+    const company = target.company || 'unknown company';
+    const category = target.type || 'unknown class';
+    const ingredient = target.ingredientName || 'unknown ingredient';
 
     return {
-      name: target.ITEM_NAME,
+      name: productName,
       imageUrl,
       priceInfo,
-      mfdsData: `식약처 허가정보: [${target.ITEM_NAME}] ${target.ENTP_NAME}, ${target.ETC_OTC_CODE_NAME}, 주성분: ${target.MAIN_INGRS}`,
-      hiraData: `심평원 고시 약가: ${priceInfo}`
+      mfdsData: `MFDS approval data: [${productName}] ${company}, ${category}, ingredient ${ingredient}`,
+      hiraData: `HIRA listed unit price: ${priceInfo}`,
     };
   } catch (error) {
-    console.error("fetchDrugInfo Error:", error);
+    console.error('fetchDrugInfo Prisma Error:', error);
     return null;
   }
 }

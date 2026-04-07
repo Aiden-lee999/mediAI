@@ -1,6 +1,23 @@
 ﻿import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+type SearchItem = {
+  id: string;
+  productName: string;
+  ingredientName: string;
+  company: string;
+  priceLabel: string;
+  reimbursement: string;
+  insuranceCode: string;
+  standardCode: string;
+  atcCode: string;
+  type: string;
+  releaseDate: string;
+  usageFrequency: number;
+  brandClass: '오리지널(대장약)' | '복제약(제네릭)';
+  sourceService: string;
+};
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -32,7 +49,7 @@ export async function POST(req: Request) {
     const originalMakers = ['존슨앤드존슨판매', '한국얀센', '화이자', '얀센', '글락소', '노바티스', '아스트라제네카', '릴리', '사노피', '다케다', '머크', '베링거', 'MSD'];
     const originalNames = ['타이레놀', '리피토', '글리벡', '노바스크', '아토르바스타틴'];
     
-    const finalItems = drugs.map((item) => {
+    const finalItems: SearchItem[] = drugs.map((item: (typeof drugs)[number]) => {
       let p = (item.priceLabel || '').trim();
       const c = (item.reimbursement || '').trim() || '비급여';
       let finalIngr = item.ingredientName || '-';
@@ -44,11 +61,14 @@ export async function POST(req: Request) {
       }
 
       let finalFreq = item.usageFrequency || 0;
+      const isOriginalCompany = !!(item.company && originalMakers.some(m => item.company?.includes(m)));
+      const isOriginalName = originalNames.some(m => item.productName.includes(m));
+      const brandClass: SearchItem['brandClass'] = (isOriginalCompany || isOriginalName) ? '오리지널(대장약)' : '복제약(제네릭)';
       
-      if (item.company && originalMakers.some(m => item.company?.includes(m))) {
+      if (isOriginalCompany) {
          finalFreq += 50000; 
       }
-      if (originalNames.some(m => item.productName.includes(m))) {
+      if (isOriginalName) {
          finalFreq += 60000;
       }
 
@@ -65,16 +85,39 @@ export async function POST(req: Request) {
         type: item.type || '',
         releaseDate: item.releaseDate || '',
         usageFrequency: finalFreq,
+        brandClass,
         sourceService: '자체DB 초고속 조회'
       };
     });
 
-    finalItems.sort((a, b) => b.usageFrequency - a.usageFrequency);
+    // 제품명+제조사 기준 중복을 제거하고, 더 높은 빈도 값을 대표값으로 사용
+    const dedupMap = new Map<string, SearchItem>();
+    for (const item of finalItems) {
+      const key = `${item.productName}__${item.company}`;
+      const prev = dedupMap.get(key);
+      if (!prev || item.usageFrequency > prev.usageFrequency) {
+        dedupMap.set(key, item);
+      }
+    }
+
+    const dedupedItems = Array.from(dedupMap.values());
+
+    // 정렬 우선순위: 오리지널/복제약 구분 -> 처방빈도 desc -> 제품명 asc
+    dedupedItems.sort((a: SearchItem, b: SearchItem) => {
+      const classRank = (v: SearchItem['brandClass']) => (v === '오리지널(대장약)' ? 0 : 1);
+      const classDiff = classRank(a.brandClass) - classRank(b.brandClass);
+      if (classDiff !== 0) return classDiff;
+
+      const freqDiff = b.usageFrequency - a.usageFrequency;
+      if (freqDiff !== 0) return freqDiff;
+
+      return a.productName.localeCompare(b.productName, 'ko');
+    });
 
     return NextResponse.json({
       success: true,
-      count: finalItems.length,
-      items: finalItems,
+      count: dedupedItems.length,
+      items: dedupedItems,
     });
   } catch (err) {
     const error = err as Error;

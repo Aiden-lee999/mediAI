@@ -268,6 +268,89 @@ function DashboardPageContent() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [translationStatus, setTranslationStatus] = useState('');
 
+  const extractDrugKeyword = (text: string) => {
+    const cleaned = (text || '')
+      .replace(/[.,!?/\\()[\]{}:;"']/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!cleaned) return '';
+
+    const stopwords = new Set([
+      '약', '약가', '가격', '이미지', '알려줘', '부작용', '효과', '관련', '추천', '대체', '비교',
+      '정리', '설명', '처방', '가능', '해주세요', '해줘', '뭐야', '좀', '용량', '문의', '질문',
+    ]);
+
+    const token = cleaned
+      .split(' ')
+      .map((v) => v.trim())
+      .find((v) => v.length >= 2 && !stopwords.has(v));
+
+    return token || '';
+  };
+
+  const toTrustedDrugCards = async (rawBlocks: any[], question: string) => {
+    if (!Array.isArray(rawBlocks)) return rawBlocks;
+
+    const blocks = [...rawBlocks];
+    const drugBlockIndex = blocks.findIndex((b: any) => b?.block_type === 'drug_cards');
+    if (drugBlockIndex < 0) return blocks;
+
+    const block = blocks[drugBlockIndex] || {};
+    const modelDrugs = Array.isArray(block?.meta_json?.drugs) ? block.meta_json.drugs : [];
+    const modelNames = modelDrugs
+      .map((d: any) => String(d?.name || '').trim())
+      .filter(Boolean)
+      .slice(0, 15);
+
+    const keyword = extractDrugKeyword(question);
+    const queryNames = [...new Set([keyword, ...modelNames].filter(Boolean))].slice(0, 20);
+
+    let verifiedCards: any[] = [];
+    if (queryNames.length > 0) {
+      try {
+        const res = await fetch('/api/drugs/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productName: queryNames.join(',') }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const items = Array.isArray(data?.items) ? data.items : [];
+
+          const uniq = new Set<string>();
+          verifiedCards = items
+            .map((item: any) => ({
+              name: String(item?.productName || '-'),
+              ingredient: String(item?.ingredientName || '-'),
+              price: String(item?.priceLabel || '가격정보없음'),
+              class: String(item?.reimbursement || '확인요망'),
+              company: String(item?.company || '-'),
+            }))
+            .filter((card: any) => {
+              const key = card.name;
+              if (!key || key === '-' || uniq.has(key)) return false;
+              uniq.add(key);
+              return true;
+            })
+            .slice(0, 20);
+        }
+      } catch {
+        verifiedCards = [];
+      }
+    }
+
+    blocks[drugBlockIndex] = {
+      ...block,
+      meta_json: {
+        ...(block.meta_json || {}),
+        drugs: verifiedCards,
+      },
+    };
+
+    return blocks;
+  };
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -635,6 +718,15 @@ function DashboardPageContent() {
          }
       }
 
+      if (Array.isArray(assistantMsg.parsedData?.blocks)) {
+        assistantMsg.parsedData.blocks = await toTrustedDrugCards(assistantMsg.parsedData.blocks, targetText);
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { ...assistantMsg };
+          return updated;
+        });
+      }
+
       const finalizedHistory = [...newHistory, assistantMsg];
       
       // 세션 저장
@@ -789,36 +881,26 @@ function DashboardPageContent() {
           </div>
         );
       case 'drug_cards':
+        const realDrugs = Array.isArray(meta_json?.drugs)
+          ? meta_json.drugs.filter((drug: any) => drug && typeof drug === 'object')
+          : [];
+
         return (
           <div key={index} className="mb-3">
             <div className="flex justify-between items-center mb-2">
               <div className="text-xs text-slate-500 font-medium">{title || '의학 엔진 검색 반영 (테이블 헤더 클릭 시 정렬 가능)'}</div>
               <button 
                 className="text-[11px] text-blue-600 hover:text-blue-800 font-bold px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 transition"
+                disabled={realDrugs.length === 0}
                 onClick={() => {
-                  let drugs = meta_json?.drugs || [];
-                  if (drugs.length > 0 && drugs.length < 15) {
-                    const expanded = [...drugs];
-                    const base = drugs[0];
-                    for (let i = 1; i <= 15; i++) {
-                      expanded.push({
-                        name: base.name.replace(/\(.*?\)/g, '').trim() + ` 제네릭 ${i}정`,
-                        ingredient: base.ingredient,
-                        price: (Math.floor(Math.random() * 80) * 10 + 100) + '원',
-                        class: Math.random() > 0.3 ? '급여/전문의약품' : '비급여/일반의약품',
-                        company: '제약사' + String.fromCharCode(64 + (i % 26 + 1))
-                      });
-                    }
-                    drugs = expanded;
-                  }
-                  setSelectedAllDrugs(drugs);
+                  setSelectedAllDrugs(realDrugs);
                   setAllDrugsModalOpen(true);
                 }}
               >
                 관련 약물 전체보기 ▾
               </button>
             </div>
-            <SortableDrugTable initialDrugs={meta_json?.drugs || []} />
+            <SortableDrugTable initialDrugs={realDrugs} />
           </div>
         );
       case 'translation':
