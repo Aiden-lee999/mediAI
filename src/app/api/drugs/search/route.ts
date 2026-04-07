@@ -2,6 +2,7 @@
 import { prisma } from '@/lib/prisma';
 import { callPublicDrugApi, extractItems } from '@/lib/publicDrugApiClient';
 import { PUBLIC_DRUG_API_ENDPOINTS } from '@/lib/publicDrugApiCatalog';
+import { loadDrugPrices } from '@/lib/drugPricesCsv';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -12,14 +13,15 @@ type SearchBody = {
   company?: string;
 };
 
-// 1. 공공 데이터 API 비동기 처방빈도 조회 함수 (한 번만 호출)
-async function fetchUsageScan(keyword: string) {
+// 1. 공공 데이터 API 비동기 처방빈도 조회 함수 (맵으로 반환)
+async function fetchUsageScan(keyword: string): Promise<Record<string, number>> {
   const usageInfo = PUBLIC_DRUG_API_ENDPOINTS.find((s) => s.baseUrl.includes('msupUserInfoService1.2'));
-  if (!usageInfo || !keyword.trim()) return 0;
+  if (!usageInfo || !keyword.trim()) return {};
 
+  const usageMap: Record<string, number> = {};
+  
   try {
     const dates = ['202301', '202306', '202312', '202401'];
-    let totalQty = 0;
     
     await Promise.all(dates.map(async (ym) => {
       try {
@@ -38,14 +40,17 @@ async function fetchUsageScan(keyword: string) {
         const items = extractItems(payload);
         items.forEach((item: any) => {
           const qty = Number(item.totUseQty || item.useQty || 0);
-          if (!isNaN(qty)) totalQty += qty;
+          const name = (item.itemName || item.itemNm || item.ITEM_NAME || '').split('(')[0].trim() || 'UNKNOWN';
+          if (!isNaN(qty) && name) {
+            usageMap[name] = (usageMap[name] || 0) + qty;
+          }
         });
       } catch (err) {}
     }));
 
-    return totalQty;
+    return usageMap;
   } catch (error) {
-    return 0;
+    return {};
   }
 }
 
@@ -68,7 +73,7 @@ async function fetchIngredientScan(productKw: string, ingrKw: string, compKw: st
         ingr_name: ingrKw,
         entpName: compKw,
         entp_name: compKw,
-        numOfRows: 30, 
+        numOfRows: 100, 
         pageNo: 1 
       },
     });
@@ -107,9 +112,10 @@ export async function POST(req: Request) {
     const targetKeyword = productName || ingredientName || '';
     
     // DB 데이터가 비어있어도 공공데이터 갱신시도를 같이 한다.
-    const [fetchedUsageQty, fetchedIngredients] = await Promise.all([
-      targetKeyword ? fetchUsageScan(targetKeyword) : Promise.resolve(0),
-      (productName || ingredientName) ? fetchIngredientScan(productName, ingredientName || productName, company) : Promise.resolve([])
+    const [fetchedUsageMap, fetchedIngredients, priceMap] = await Promise.all([
+      targetKeyword ? fetchUsageScan(targetKeyword) : Promise.resolve({}),
+      (productName || ingredientName) ? fetchIngredientScan(productName, ingredientName || productName, company) : Promise.resolve([]),
+      loadDrugPrices().catch(() => new Map<string, string>())
     ]);
 
     // 3. 결합 (하이브리드 병합)
@@ -122,15 +128,18 @@ export async function POST(req: Request) {
       
       // DB에 없는 약품이면 (특히 성분 검색시) 리스트에 추가
       if (!exists && title) {
+        const pCode = String(apiItem.itemSeq || apiItem.ITEM_SEQ || '');
+        const fallbackPrice = pCode ? priceMap.get(pCode) : undefined;
+
         hybridDrugs.push({
-           id: apiItem.itemSeq || apiItem.ITEM_SEQ || Math.random().toString(),
+           id: pCode || Math.random().toString(),
            productName: title,
            ingredientName: apiItem.itemIngrName || apiItem.item_ingr_name || apiItem.ITEM_INGR_NAME || ingredientName || '-',
            company: apiItem.entpName || apiItem.entp_name || '-',
-           priceLabel: '가격정보없음',
-           reimbursement: '비급여',
+           priceLabel: fallbackPrice ? `${fallbackPrice}원` : '가격정보없음',
+           reimbursement: fallbackPrice ? '급여' : '비급여',
            insuranceCode: '',
-           standardCode: '',
+           standardCode: pCode,
            atcCode: '',
            type: '',
            releaseDate: '',
@@ -166,8 +175,19 @@ export async function POST(req: Request) {
       }
 
       let finalFreq = item.usageFrequency || 0;
-      if (finalFreq === 0 && fetchedUsageQty > 0) {
-        finalFreq = fetchedUsageQty;
+      
+      // 5. 처방빈도 맵에서 현재 약품 이름으로 매칭해서 가져오기
+      const pNameTrimmed = item.productName.split('(')[0].trim().toLowerCase();
+      // 맵을 순회하며 이름이 포함되면 가져옴. (가장 유사하게)
+      let foundFreq = 0;
+      for (const [key, val] of Object.entries(fetchedUsageMap)) {
+        if (key.toLowerCase().includes(pNameTrimmed) || pNameTrimmed.includes(key.toLowerCase())) {
+          foundFreq += val as number;
+        }
+      }
+
+      if (finalFreq === 0 && foundFreq > 0) {
+        finalFreq = foundFreq;
         isAugmented = true; // 플래그 켜기
       }
 
@@ -188,6 +208,9 @@ export async function POST(req: Request) {
         sourceService: item._isApiFallback ? '공공API(자체DB 누락)' : (isAugmented ? '자체DB(Supabase) + 공공API(실시간 채움)' : '자체DB(Supabase)'),
       };
     });
+
+    // 5. 처방빈도(사용량) 기준으로 내림차순 정렬 (타이레놀 같은 오리지널 대장약이 가장 위로 올라오게)
+    finalItems.sort((a, b) => b.usageFrequency - a.usageFrequency);
 
     return NextResponse.json({
       success: true,
