@@ -4,6 +4,29 @@ import { loadDrugPrices } from '../src/lib/drugPricesCsv';
 
 const prisma = new PrismaClient();
 
+function parseUsageFromRow(row: { raw: Record<string, string> }) {
+  const keys = [
+    'useCnt',
+    'prescriptCnt',
+    'usage',
+    'freq',
+    '건수',
+    '처방건수',
+    '사용량',
+  ];
+
+  for (const key of keys) {
+    const value = row.raw?.[key];
+    if (!value) continue;
+    const parsed = Number(String(value).replace(/[^0-9.-]/g, ''));
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed);
+    }
+  }
+
+  return 0;
+}
+
 async function reseed() {
   console.log('Starting DB Reseed...');
   
@@ -43,6 +66,8 @@ async function reseed() {
        seenStdCode.add(standardCode);
     }
     
+    const usageFrequency = parseUsageFromRow(row);
+
     toInsert.push({
       productName: row.productName,
       ingredientName: row.ingredientText || row.ingredientCode || '-',
@@ -53,7 +78,7 @@ async function reseed() {
       reimbursement: row.coverageType || (priceLabel ? '급여' : '비급여'),
       type: row.otcType || null,
       releaseDate: row.raw['품목허가일자'] || null,
-      usageFrequency: 0,
+      usageFrequency,
       rawJson: JSON.stringify(row.raw)
     });
   }

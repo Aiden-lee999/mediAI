@@ -209,8 +209,30 @@ export function normalizeDrugItem(item: GenericItem, sourceService: string): Nor
     'openDe',
     'releaseDate',
   ]);
-  const usageFrequency = pickNumber(item, ['useCnt', 'prescriptCnt', 'freq', 'usage', 'use_count']);
-  const priceRaw = pickString(item, ['maxAmt', 'price', 'amt', '약가', '보험약가', 'unitPrice', 'trustQntList']);
+  const usageFrequency = pickNumber(item, [
+    'useCnt',
+    'prescriptCnt',
+    'freq',
+    'usage',
+    'use_count',
+    'cnt',
+    'totCnt',
+    'totUseCnt',
+    'totUseQty',
+  ]);
+  const priceRaw = pickString(item, [
+    'maxAmt',
+    'price',
+    'amt',
+    '약가',
+    '보험약가',
+    'unitPrice',
+    'trustQntList',
+    'dgamt',
+    'upprAmt',
+    'ceilAmt',
+    'supplyAmt',
+  ]);
   const safeType = type === '-' ? '' : type;
   const safeReim = reimbursement === '-' ? '' : reimbursement;
   const safePriceRaw = priceRaw === '-' ? '' : priceRaw;

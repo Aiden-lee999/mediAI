@@ -7,6 +7,29 @@ import { findHeaderByPatterns, parseCsvLine, pick } from '../src/lib/drugMasterC
 
 const prisma = new PrismaClient();
 
+function parseUsageFromRaw(raw: Record<string, any>) {
+  const keys = [
+    'useCnt',
+    'prescriptCnt',
+    'usage',
+    'freq',
+    '건수',
+    '처방건수',
+    '사용량',
+  ];
+
+  for (const key of keys) {
+    const value = raw[key];
+    if (value === undefined || value === null) continue;
+    const parsed = Number(String(value).replace(/[^0-9.-]/g, ''));
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed);
+    }
+  }
+
+  return 0;
+}
+
 async function seed() {
   console.log('Starting Drug ETL Pipeline...');
   const priceMap = await loadDrugPrices();
@@ -78,6 +101,8 @@ async function seed() {
     const priceLabel = csvPrice || raw['상한금액'] || raw['약가'] || '';
     const finalCoverage = csvPrice ? '급여' : (coverage || '비급여');
     
+    const usageFrequency = parseUsageFromRaw(raw);
+
     batch.push({
       productName,
       ingredientName,
@@ -89,7 +114,7 @@ async function seed() {
       reimbursement: finalCoverage,
       type: raw['전문일반구분'] || '약가마스터',
       releaseDate: releaseDate || null,
-      usageFrequency: 0,
+      usageFrequency,
       rawJson: JSON.stringify(raw),
     });
 
