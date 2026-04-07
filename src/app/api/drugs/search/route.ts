@@ -81,11 +81,11 @@ export async function POST(req: Request) {
       });
     }
 
-    // 1. 초고속 로컬 DB 검색
+    // 1. 초고속 로컬 DB 검색 (대소문자 구분 없는 영문 검색 지원)
     const conditions: any[] = [];
-    if (productName) conditions.push({ productName: { contains: productName } });
-    if (ingredientName) conditions.push({ ingredientName: { contains: ingredientName } });
-    if (company) conditions.push({ company: { contains: company } });
+    if (productName) conditions.push({ productName: { contains: productName, mode: 'insensitive' } });
+    if (ingredientName) conditions.push({ ingredientName: { contains: ingredientName, mode: 'insensitive' } });
+    if (company) conditions.push({ company: { contains: company, mode: 'insensitive' } });
 
     const drugs = await prisma.drug.findMany({
       where: { AND: conditions },
