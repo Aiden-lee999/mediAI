@@ -28,10 +28,27 @@ export async function POST(req: Request) {
     const conditions: any[] = [];
     if (searchProducts.length > 0) {
       if (searchProducts.length === 1) {
-         conditions.push({ productName: { contains: searchProducts[0], mode: 'insensitive' } });
+         const q = searchProducts[0];
+         conditions.push({
+           OR: [
+             { productName: { contains: q, mode: 'insensitive' } },
+             { ingredientName: { contains: q, mode: 'insensitive' } },
+             { company: { contains: q, mode: 'insensitive' } },
+             { standardCode: { contains: q, mode: 'insensitive' } },
+             { insuranceCode: { contains: q, mode: 'insensitive' } },
+             { atcCode: { contains: q, mode: 'insensitive' } },
+           ],
+         });
       } else {
          conditions.push({
-           OR: searchProducts.map((p: string) => ({ productName: { contains: p, mode: 'insensitive' } }))
+           OR: searchProducts.flatMap((p: string) => ([
+             { productName: { contains: p, mode: 'insensitive' } },
+             { ingredientName: { contains: p, mode: 'insensitive' } },
+             { company: { contains: p, mode: 'insensitive' } },
+             { standardCode: { contains: p, mode: 'insensitive' } },
+             { insuranceCode: { contains: p, mode: 'insensitive' } },
+             { atcCode: { contains: p, mode: 'insensitive' } },
+           ]))
          });
       }
     }
@@ -124,6 +141,30 @@ export async function POST(req: Request) {
     console.error('Database Search Error:', error);
     return NextResponse.json(
       { success: false, message: 'DB 검색 중 오류가 발생했습니다.', error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const keyword = (url.searchParams.get('keyword') || '').trim();
+    const productName = (url.searchParams.get('productName') || keyword).trim();
+    const ingredientName = (url.searchParams.get('ingredientName') || '').trim();
+    const company = (url.searchParams.get('company') || '').trim();
+
+    const proxyReq = new Request('http://localhost/api/drugs/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productName, ingredientName, company }),
+    });
+
+    return POST(proxyReq);
+  } catch (err) {
+    const error = err as Error;
+    return NextResponse.json(
+      { success: false, message: '요청 파싱 중 오류가 발생했습니다.', error: error.message },
       { status: 500 }
     );
   }
