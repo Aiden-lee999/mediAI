@@ -22,12 +22,9 @@ export async function POST(req: Request) {
     if (company) conditions.push({ company: { contains: company, mode: 'insensitive' } });
     if (ingredientName) conditions.push({ ingredientName: { contains: ingredientName, mode: 'insensitive' } });
     
-    if (conditions.length === 0) {
-      return NextResponse.json({ success: true, count: 0, items: [] });
-    }
-
+    // 조건이 비어있으면 전체 중 처방빈도 높은 순으로 150개 반환되도록 유지 (에러/빈배열 반환 제거)
     const drugs = await prisma.drug.findMany({
-      where: { AND: conditions },
+      where: conditions.length > 0 ? { AND: conditions } : undefined,
       take: 150,
       orderBy: { usageFrequency: 'desc' }
     });
