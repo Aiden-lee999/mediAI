@@ -2,7 +2,7 @@
 import { prisma } from '@/lib/prisma';
 import { callPublicDrugApi, extractItems } from '@/lib/publicDrugApiClient';
 import { PUBLIC_DRUG_API_ENDPOINTS } from '@/lib/publicDrugApiCatalog';
-import { loadDrugPrices } from '@/lib/drugPricesCsv';
+import { loadDrugPrices, searchProductsByIngredient } from '@/lib/drugPricesCsv';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -100,10 +100,29 @@ export async function POST(req: Request) {
       });
     }
 
+    let searchProducts = productName ? [productName] : [];
+
+    // 성분 검색인 경우, 식약처 API가 성분명 검색을 지원하지 않으므로 CSV에서 관련된 제품명들을 가져와 우회 검색
+    if (ingredientName && !productName) {
+      const translated = await searchProductsByIngredient(ingredientName);
+      if (translated.length > 0) {
+        searchProducts = translated;
+      } else {
+        searchProducts = [ingredientName]; // 일단 기본 검색어로 대체
+      }
+    }
+
     // 1. 초고속 로컬 DB 검색 (대소문자 구분 없는 영문 검색 지원)
     const conditions: any[] = [];
-    if (productName) conditions.push({ productName: { contains: productName, mode: 'insensitive' } });
-    if (ingredientName) conditions.push({ ingredientName: { contains: ingredientName, mode: 'insensitive' } });
+    if (searchProducts.length > 0) {
+      if (searchProducts.length === 1) {
+         conditions.push({ productName: { contains: searchProducts[0], mode: 'insensitive' } });
+      } else {
+         conditions.push({
+           OR: searchProducts.map(p => ({ productName: { contains: p, mode: 'insensitive' } }))
+         });
+      }
+    }
     if (company) conditions.push({ company: { contains: company, mode: 'insensitive' } });
 
     const drugs = await prisma.drug.findMany({
@@ -112,13 +131,22 @@ export async function POST(req: Request) {
     });
 
     // 2. 하이브리드 공공API (실시간) 보완 호출
-    const targetKeyword = productName || ingredientName || '';
-    
-    // DB 데이터가 비어있어도 공공데이터 갱신시도를 같이 한다.
-    const [fetchedUsageMap, fetchedIngredients, priceMap] = await Promise.all([
-      targetKeyword ? fetchUsageScan(targetKeyword) : Promise.resolve({}),
-      (productName || ingredientName) ? fetchIngredientScan(productName, ingredientName, company) : Promise.resolve([]),
-      loadDrugPrices().catch(() => new Map<string, string>())
+    let fetchedUsageMap: Record<string, number> = {};
+    let fetchedIngredients: any[] = [];
+    let priceMap = new Map<string, string>();
+
+    // DB 데이터가 비어있어도 공공데이터 갱신시도를 같이 한다. 
+    // 성분 번역된 제품명이 여러 개일 경우 병렬로 나누어 호출하여 합침
+    await Promise.all([
+      ...(searchProducts.length > 0 ? searchProducts.map(async (p) => {
+        const m = await fetchUsageScan(p);
+        Object.assign(fetchedUsageMap, m);
+      }) : []),
+      ...(searchProducts.length > 0 ? searchProducts.map(async (p) => {
+        const items = await fetchIngredientScan(p, '', company);
+        fetchedIngredients.push(...items);
+      }) : []),
+      loadDrugPrices().then(m => priceMap = m).catch(() => {})
     ]);
 
     // 3. 결합 (하이브리드 병합)
@@ -130,9 +158,10 @@ export async function POST(req: Request) {
       const inName = (apiItem.itemIngrName || apiItem.item_ingr_name || apiItem.ITEM_INGR_NAME || '').toString().toLowerCase();
       const cpName = (apiItem.entpName || apiItem.entp_name || '').toString().toLowerCase();
 
-      // 반드시 검색 키워드를 포함하는 항목만 추출하도록 2차 필터링 (공공 API가 파라미터 무시하고 전체를 보낼 수 있음)
-      const pMatch = !productName || title.toLowerCase().includes(productName.toLowerCase());
-      const iMatch = !ingredientName || inName.includes(ingredientName.toLowerCase());
+      // 반드시 검색 키워드를 포함하는 항목만 추출하도록 2차 필터링 
+      // API가 성분명을 보내주지 않기 때문에 번역된 제품명 중 하나라도 포함하는지 검사
+      const pMatch = searchProducts.length === 0 || searchProducts.some(p => title.toLowerCase().includes(p.toLowerCase()));
+      const iMatch = !ingredientName || pMatch || inName.includes(ingredientName.toLowerCase()); // 성분명은 pMatch가 통과하면 통과 (제품명으로 변환되어 검색되었음)
       const cMatch = !company || cpName.includes(company.toLowerCase());
 
       if (!(pMatch && iMatch && cMatch)) return;
