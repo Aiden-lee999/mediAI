@@ -45,6 +45,7 @@ export default function DrugSearchPanel() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [lastMeta, setLastMeta] = useState('');
   const [items, setItems] = useState<DrugItem[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>('price');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -80,26 +81,49 @@ export default function DrugSearchPanel() {
   const handleSearch = async () => {
     setLoading(true);
     setError('');
+    setLastMeta('');
 
     try {
       const res = await fetch('/api/drugs/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
+        cache: 'no-store',
       });
 
-      const _dataTxt = await res.text();
-      let data;
+      const dataTxt = await res.text();
+      let data: any;
+
       try {
-        data = JSON.parse(_dataTxt);
-      } catch (parseErr) {
-        throw new Error('API 오류(JSON 파싱 실패): ' + _dataTxt.substring(0, 80));
-      }
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || data.message || '검색 중 오류가 발생했습니다.');
+        data = JSON.parse(dataTxt);
+      } catch {
+        data = null;
       }
 
-      setItems(Array.isArray(data.items) ? data.items : []);
+      // Fallback: when POST fails/parsing fails/empty list, retry through GET keyword endpoint.
+      const needsFallback = !res.ok || !data?.success || !Array.isArray(data?.items);
+      if (needsFallback) {
+        const keyword = encodeURIComponent((form.productName || '').trim());
+        const fallbackRes = await fetch(`/api/drugs/search?keyword=${keyword}`, { cache: 'no-store' });
+        const fallbackTxt = await fallbackRes.text();
+        let fallbackData: any;
+        try {
+          fallbackData = JSON.parse(fallbackTxt);
+        } catch {
+          throw new Error('API 응답 해석 실패: ' + fallbackTxt.substring(0, 120));
+        }
+
+        if (!fallbackRes.ok || !fallbackData?.success || !Array.isArray(fallbackData?.items)) {
+          throw new Error(fallbackData?.error || fallbackData?.message || '검색 중 오류가 발생했습니다.');
+        }
+
+        setItems(fallbackData.items);
+        setLastMeta(`GET fallback 결과 ${fallbackData.items.length}건`);
+        return;
+      }
+
+      setItems(data.items);
+      setLastMeta(`POST 결과 ${data.items.length}건`);
     } catch (e: any) {
       setError(e?.message || '검색 중 오류가 발생했습니다.');
     } finally {
@@ -166,6 +190,9 @@ export default function DrugSearchPanel() {
 
       {error && (
         <div className="mt-4 p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">{error}</div>
+      )}
+      {!error && lastMeta && (
+        <div className="mt-4 p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-xs text-emerald-700">{lastMeta}</div>
       )}
 
       <div className="mt-6 bg-white border border-slate-200 rounded-xl overflow-hidden">
