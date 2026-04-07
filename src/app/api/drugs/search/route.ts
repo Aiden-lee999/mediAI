@@ -36,6 +36,43 @@ function normalizeBaseProductName(name: string) {
     .trim();
 }
 
+function toDigits(value: string) {
+  return (value || '').replace(/\D/g, '');
+}
+
+function toProductCode(value: string) {
+  const digits = toDigits(value);
+  if (!digits) return '';
+  if (digits.length === 9) return digits;
+  if (digits.length === 13 && digits.startsWith('880')) {
+    // Korean barcode format: 880 + productCode(9) + checksum(1)
+    return digits.slice(3, 12);
+  }
+  return '';
+}
+
+function buildCsvLookupCodes(standardCode: string, insuranceCode: string) {
+  const codes = new Set<string>();
+  const candidates = [standardCode, insuranceCode];
+
+  for (const raw of candidates) {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) continue;
+    codes.add(trimmed);
+
+    const digits = toDigits(trimmed);
+    if (digits) codes.add(digits);
+
+    const productCode = toProductCode(trimmed);
+    if (productCode) {
+      codes.add(productCode);
+      codes.add(`880${productCode}`);
+    }
+  }
+
+  return Array.from(codes);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -125,7 +162,9 @@ export async function POST(req: Request) {
     
     const finalItems: SearchItem[] = drugs.map((item: (typeof drugs)[number]) => {
       const standardCode = (item.standardCode || '').trim();
-      const csvData = standardCode ? csvPriceMap.get(standardCode) : undefined;
+      const insuranceCode = (item.insuranceCode || '').trim();
+      const csvLookupCodes = buildCsvLookupCodes(standardCode, insuranceCode);
+      const csvData = csvLookupCodes.map((code) => csvPriceMap.get(code)).find(Boolean);
 
       let p = (item.priceLabel || '').trim().replace(/,/g, '');
       const c = (item.reimbursement || '').trim() || '비급여';
@@ -134,10 +173,13 @@ export async function POST(req: Request) {
       }
 
       let finalIngr = (item.ingredientName || '').trim();
+      const mappedIngredientByStandard =
+        standardIngredientNameMap.get(standardCode) ||
+        standardIngredientNameMap.get(toProductCode(standardCode));
       if (!finalIngr || finalIngr === '-' || looksLikeCode(finalIngr)) {
         finalIngr = (
           ingredientNameMap.get(finalIngr) ||
-          standardIngredientNameMap.get(standardCode) ||
+          mappedIngredientByStandard ||
           csvData?.ingredient ||
           ingredientFromProductName(item.productName || '') ||
           '-'
@@ -146,6 +188,8 @@ export async function POST(req: Request) {
 
       if (p && /[0-9]/.test(p) && p !== '가격정보없음') {
         if (!p.includes('원')) p += '원';
+      } else if (c.includes('비급여')) {
+        p = '비급여(공시약가없음)';
       } else {
         p = '가격정보없음';
       }
@@ -167,7 +211,12 @@ export async function POST(req: Request) {
         productName: item.productName || '-',
         ingredientName: finalIngr,
         company: item.company || '-',
-        priceLabel: p === '가격정보없음' ? '가격정보없음 / ' + c : p + ' / ' + c,
+        priceLabel:
+          p === '가격정보없음'
+            ? '가격정보없음 / ' + c
+            : p.startsWith('비급여(')
+              ? p
+              : p + ' / ' + c,
         reimbursement: c,
         insuranceCode: item.insuranceCode || '',
         standardCode: item.standardCode || '',
