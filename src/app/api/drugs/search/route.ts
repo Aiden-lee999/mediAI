@@ -127,7 +127,17 @@ export async function POST(req: Request) {
 
     fetchedIngredients.forEach((apiItem: any) => {
       const title = (apiItem.itemName || apiItem.ITEM_NAME || apiItem.item_name || '').split('(')[0].trim();
-      const exists = hybridDrugs.find(d => d.productName.includes(title));
+      const inName = (apiItem.itemIngrName || apiItem.item_ingr_name || apiItem.ITEM_INGR_NAME || '').toString().toLowerCase();
+      const cpName = (apiItem.entpName || apiItem.entp_name || '').toString().toLowerCase();
+
+      // 반드시 검색 키워드를 포함하는 항목만 추출하도록 2차 필터링 (공공 API가 파라미터 무시하고 전체를 보낼 수 있음)
+      const pMatch = !productName || title.toLowerCase().includes(productName.toLowerCase());
+      const iMatch = !ingredientName || inName.includes(ingredientName.toLowerCase());
+      const cMatch = !company || cpName.includes(company.toLowerCase());
+
+      if (!(pMatch && iMatch && cMatch)) return;
+
+      const exists = hybridDrugs.find(d => d.productName.includes(title) || title.includes(d.productName));
       
       // DB에 없는 약품이면 (특히 성분 검색시) 리스트에 추가
       if (!exists && title) {
@@ -148,7 +158,10 @@ export async function POST(req: Request) {
            releaseDate: '',
            usageFrequency: 0,
            _isApiFallback: true,
+           _isEasyDrug: true // KFDA 제공 소비자 친화 정보
         });
+      } else if (exists) {
+        exists._isEasyDrug = true;
       }
     });
 
