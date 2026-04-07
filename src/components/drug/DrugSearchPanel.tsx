@@ -36,6 +36,10 @@ function getUsageFrequencyRange(qty: number) {
   return '-';
 }
 
+function cleanProductName(value: string) {
+  return (value || '').replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 export default function DrugSearchPanel() {
   const [form, setForm] = useState({
     productName: '',
@@ -139,7 +143,7 @@ export default function DrugSearchPanel() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-4 sm:p-6 mb-10 w-full animate-in fade-in zoom-in duration-300">
+    <div className="max-w-[1650px] mx-auto p-4 sm:p-6 mb-10 w-full animate-in fade-in zoom-in duration-300">
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="border-b border-slate-100 bg-slate-50 px-6 py-5 flex items-center justify-between">
           <h2 className="text-xl font-bold text-slate-800 tracking-tight">의약품 검색</h2>
@@ -237,7 +241,7 @@ export default function DrugSearchPanel() {
             <tbody>
               {sortedItems.map((item) => (
                 <tr key={item.id} className="border-t hover:bg-blue-50">
-                  <td className="px-3 py-2 font-semibold text-blue-700">{item.productName || '-'}</td>
+                  <td className="px-3 py-2 font-semibold text-blue-700">{cleanProductName(item.productName) || '-'}</td>
                   <td className="px-3 py-2">{item.priceLabel || '-'}</td>
                   <td className="px-3 py-2">{item.brandClass || '복제약(제네릭)'}</td>
                   <td className="px-3 py-2">{item.ingredientName || '-'}</td>

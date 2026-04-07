@@ -17,6 +17,10 @@ let cache: Map<string, DrugPriceData> | null = null;
 let cachedAt = 0;
 const CACHE_TTL_MS = 1000 * 60 * 10;
 
+let ingredientCodeCache: Map<string, string> | null = null;
+let standardCodeIngredientCache: Map<string, string> | null = null;
+let ingredientCodeCachedAt = 0;
+
 export function parseCsvLine(line: string) {
   const result: string[] = [];
   let current = '';
@@ -115,6 +119,80 @@ export async function loadRichDrugPrices(): Promise<Map<string, DrugPriceData>> 
 export async function getPriceByProductCode(productCode: string): Promise<string> {
   const priceMap = await loadDrugPrices();
   return priceMap.get(productCode) || '';
+}
+
+function extractIngredientFromProductName(productName: string) {
+  const match = productName.match(/\(([^)]+)\)/);
+  return match?.[1]?.trim() || '';
+}
+
+export async function loadIngredientCodeMap(): Promise<Map<string, string>> {
+  const now = Date.now();
+  if (ingredientCodeCache && now - ingredientCodeCachedAt < CACHE_TTL_MS) {
+    return ingredientCodeCache;
+  }
+
+  const filePath = process.env.DRUG_MASTER_CODES_CSV_PATH || path.join(process.cwd(), 'data', 'drug_master_codes.csv');
+
+  try {
+    const text = await readCsvText(filePath);
+    const lines = text.split(/\r?\n/).filter((line) => line.trim());
+    if (lines.length < 2) {
+      ingredientCodeCache = new Map();
+      ingredientCodeCachedAt = now;
+      return ingredientCodeCache;
+    }
+
+    const headers = parseCsvLine(lines[0]);
+    const nameIdx = headers.findIndex((h) => h.includes('한글상품명'));
+    const ingredientCodeIdx = headers.findIndex((h) => h.includes('일반명코드'));
+    const standardCodeIdx = headers.findIndex((h) => h.includes('표준코드'));
+
+    const safeNameIdx = nameIdx > -1 ? nameIdx : 0;
+    const safeIngredientCodeIdx = ingredientCodeIdx > -1 ? ingredientCodeIdx : 12;
+    const safeStandardCodeIdx = standardCodeIdx > -1 ? standardCodeIdx : 10;
+    const result = new Map<string, string>();
+    const standardResult = new Map<string, string>();
+
+    for (let i = 1; i < lines.length; i += 1) {
+      const cols = parseCsvLine(lines[i]);
+      if (cols.length <= Math.max(safeNameIdx, safeIngredientCodeIdx)) continue;
+
+      const ingredientCode = (cols[safeIngredientCodeIdx] || '').trim();
+      const productName = (cols[safeNameIdx] || '').trim();
+      const standardCode = (cols[safeStandardCodeIdx] || '').trim();
+      const ingredient = extractIngredientFromProductName(productName);
+
+      if (ingredientCode && ingredient && !result.has(ingredientCode)) {
+        result.set(ingredientCode, ingredient);
+      }
+
+      if (standardCode && ingredient && !standardResult.has(standardCode)) {
+        standardResult.set(standardCode, ingredient);
+      }
+    }
+
+    ingredientCodeCache = result;
+    standardCodeIngredientCache = standardResult;
+    ingredientCodeCachedAt = now;
+    return result;
+  } catch (error) {
+    console.error('Error loading ingredient code map:', error);
+    ingredientCodeCache = new Map();
+    standardCodeIngredientCache = new Map();
+    ingredientCodeCachedAt = now;
+    return ingredientCodeCache;
+  }
+}
+
+export async function getIngredientNameByCode(code: string): Promise<string> {
+  const map = await loadIngredientCodeMap();
+  return map.get(code.trim()) || '';
+}
+
+export async function getIngredientNameByStandardCode(standardCode: string): Promise<string> {
+  await loadIngredientCodeMap();
+  return standardCodeIngredientCache?.get(standardCode.trim()) || '';
 }
 
 export async function searchProductsByIngredient(keyword: string): Promise<string[]> {

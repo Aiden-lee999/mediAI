@@ -974,7 +974,7 @@ function DashboardPageContent() {
       </div>
 
       {/* 메인 캔버스 */}
-      <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full relative">
+      <div className={`flex-1 flex flex-col w-full relative mx-auto ${view === 'drug_search' ? 'max-w-[1700px]' : 'max-w-4xl'}`}>
         <header className="bg-white border-b border-slate-200 p-4 flex justify-between items-center shadow-sm z-30">
           <div className="flex items-center gap-2 md:hidden">
             <button className="p-2 -ml-2 text-slate-600" onClick={() => setSidebarOpen(true)}> 메뉴</button>
