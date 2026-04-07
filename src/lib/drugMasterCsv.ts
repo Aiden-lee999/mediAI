@@ -52,31 +52,11 @@ export function parseCsvLine(line: string) {
   return result;
 }
 
-function scoreCsvHeader(text: string) {
-  const firstLine = text.split(/\r?\n/, 1)[0] || '';
-  const normalized = firstLine.replace(/\s+/g, '').toLowerCase();
-  const mojibakePenalty = (firstLine.match(/[�ÃÌÐ]/g) || []).length;
-  const keywordBonus = [
-    '한글상품명',
-    '제품명',
-    '업체명',
-    '약품규격',
-    '표준코드',
-    '보험코드',
-    'atc',
-    '성분',
-    '일반명',
-  ].reduce((acc, token) => (normalized.includes(token) ? acc + 2 : acc), 0);
-
-  return keywordBonus - mojibakePenalty;
-}
 
 async function readCsvText(filePath: string) {
-  const raw = await fs.readFile(filePath);
-  const utf8 = raw.toString('utf8');
-  const eucKr = iconv.decode(raw, 'euc-kr');
-
-  return scoreCsvHeader(eucKr) >= scoreCsvHeader(utf8) ? eucKr : utf8;
+  const fsPromises = await import('fs/promises');
+  const raw = await fsPromises.default.readFile(filePath);
+  return await import('iconv-lite').then(iconv => iconv.default.decode(raw, 'euc-kr'));
 }
 
 export function pick(row: Record<string, string>, keys: string[]) {

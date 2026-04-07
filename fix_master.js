@@ -1,0 +1,1 @@
+const fs=require('fs'); let t=fs.readFileSync('src/lib/drugMasterCsv.ts','utf8'); t=t.replace(/function scoreCsvHeader[\\s\\S]*?function readCsvText[\\s\\S]*?return scoreCsvHeader[^}]*}/, 'async function readCsvText(filePath: string) { const raw = await fs.readFile(filePath); return iconv.decode(raw, \'euc-kr\'); }'); fs.writeFileSync('src/lib/drugMasterCsv.ts',t);

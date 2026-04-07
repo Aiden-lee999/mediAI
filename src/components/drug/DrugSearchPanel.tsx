@@ -84,7 +84,13 @@ export default function DrugSearchPanel() {
         body: JSON.stringify(form),
       });
 
-      const data = await res.json();
+      const _dataTxt = await res.text();
+      let data;
+      try {
+        data = JSON.parse(_dataTxt);
+      } catch (parseErr) {
+        throw new Error('API 오류(JSON 파싱 실패): ' + _dataTxt.substring(0, 80));
+      }
       if (!res.ok || !data.success) {
         throw new Error(data.error || data.message || '검색 중 오류가 발생했습니다.');
       }
