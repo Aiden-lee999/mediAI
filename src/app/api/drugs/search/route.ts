@@ -57,11 +57,20 @@ export async function POST(req: Request) {
     if (ingredientName) conditions.push({ ingredientName: { contains: ingredientName, mode: 'insensitive' } });
     
     // 조건이 비어있으면 전체 중 처방빈도 높은 순으로 150개 반환되도록 유지 (에러/빈배열 반환 제거)
-    const drugs = await prisma.drug.findMany({
+    let drugs = await prisma.drug.findMany({
       where: conditions.length > 0 ? { AND: conditions } : undefined,
       take: 150,
       orderBy: { usageFrequency: 'desc' }
     });
+
+    // If filtered search yields nothing, return default top list instead of empty results.
+    const usedDefaultFallback = conditions.length > 0 && drugs.length === 0;
+    if (usedDefaultFallback) {
+      drugs = await prisma.drug.findMany({
+        take: 150,
+        orderBy: { usageFrequency: 'desc' }
+      });
+    }
 
     const originalMakers = ['존슨앤드존슨판매', '한국얀센', '화이자', '얀센', '글락소', '노바티스', '아스트라제네카', '릴리', '사노피', '다케다', '머크', '베링거', 'MSD'];
     const originalNames = ['타이레놀', '리피토', '글리벡', '노바스크', '아토르바스타틴'];
@@ -135,6 +144,7 @@ export async function POST(req: Request) {
       success: true,
       count: dedupedItems.length,
       items: dedupedItems,
+      fallbackUsed: usedDefaultFallback,
     });
   } catch (err) {
     const error = err as Error;

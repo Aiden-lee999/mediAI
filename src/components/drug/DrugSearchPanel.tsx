@@ -101,9 +101,10 @@ export default function DrugSearchPanel() {
       }
 
       // Fallback: when POST fails/parsing fails/empty list, retry through GET keyword endpoint.
-      const needsFallback = !res.ok || !data?.success || !Array.isArray(data?.items);
+      const needsFallback = !res.ok || !data?.success || !Array.isArray(data?.items) || data.items.length === 0;
       if (needsFallback) {
-        const keyword = encodeURIComponent((form.productName || '').trim());
+        const fallbackKeyword = (form.productName || form.ingredientName || form.company || '').trim();
+        const keyword = encodeURIComponent(fallbackKeyword);
         const fallbackRes = await fetch(`/api/drugs/search?keyword=${keyword}`, { cache: 'no-store' });
         const fallbackTxt = await fallbackRes.text();
         let fallbackData: any;
