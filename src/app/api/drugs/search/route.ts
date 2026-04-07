@@ -49,17 +49,28 @@ async function fetchUsageScan(keyword: string) {
   }
 }
 
-// 2. 공공 데이터 API 비동기 식약처 조회 함수 (성분 보완용)
-async function fetchIngredientScan(keyword: string) {
+// 2. 공공 데이터 API 비동기 식약처 조회 함수 (성분 보완 및 자체 검색용)
+async function fetchIngredientScan(productKw: string, ingrKw: string, compKw: string) {
   const easyDrug = PUBLIC_DRUG_API_ENDPOINTS.find((s) => s.baseUrl.includes('DrbEasyDrugInfoService'));
-  if (!easyDrug || !keyword.trim()) return [];
+  if (!easyDrug || (!productKw.trim() && !ingrKw.trim())) return [];
 
+  // 이전의 query parameter 모두 전달 패턴 (각 API 파라미터가 다를 수 있으므로 넓게 전달)
   try {
     const payload = await callPublicDrugApi({
       serviceName: easyDrug.serviceName,
       baseUrl: easyDrug.baseUrl,
       operation: '/getDrbEasyDrugList',
-      query: { itemName: keyword, numOfRows: 30, pageNo: 1 },
+      query: { 
+        itemName: productKw, 
+        item_name: productKw,
+        itemNm: productKw,
+        ingrName: ingrKw,
+        ingr_name: ingrKw,
+        entpName: compKw,
+        entp_name: compKw,
+        numOfRows: 30, 
+        pageNo: 1 
+      },
     });
     return extractItems(payload);
   } catch (err) {
@@ -98,11 +109,39 @@ export async function POST(req: Request) {
     // DB 데이터가 비어있어도 공공데이터 갱신시도를 같이 한다.
     const [fetchedUsageQty, fetchedIngredients] = await Promise.all([
       targetKeyword ? fetchUsageScan(targetKeyword) : Promise.resolve(0),
-      productName ? fetchIngredientScan(productName) : Promise.resolve([])
+      (productName || ingredientName) ? fetchIngredientScan(productName, ingredientName || productName, company) : Promise.resolve([])
     ]);
 
-    // 3. 결합 및 반환
-    const finalItems = drugs.map((item) => {
+    // 3. 결합 (하이브리드 병합)
+    // DB에서 찾지 못한 성분검색 결과가 공공데이터에 있다면 DB 리스트에 동적으로 추가해줌.
+    const hybridDrugs: any[] = [...drugs];
+
+    fetchedIngredients.forEach((apiItem: any) => {
+      const title = (apiItem.itemName || apiItem.ITEM_NAME || apiItem.item_name || '').split('(')[0].trim();
+      const exists = hybridDrugs.find(d => d.productName.includes(title));
+      
+      // DB에 없는 약품이면 (특히 성분 검색시) 리스트에 추가
+      if (!exists && title) {
+        hybridDrugs.push({
+           id: apiItem.itemSeq || apiItem.ITEM_SEQ || Math.random().toString(),
+           productName: title,
+           ingredientName: apiItem.itemIngrName || apiItem.item_ingr_name || apiItem.ITEM_INGR_NAME || ingredientName || '-',
+           company: apiItem.entpName || apiItem.entp_name || '-',
+           priceLabel: '가격정보없음',
+           reimbursement: '비급여',
+           insuranceCode: '',
+           standardCode: '',
+           atcCode: '',
+           type: '',
+           releaseDate: '',
+           usageFrequency: 0,
+           _isApiFallback: true,
+        });
+      }
+    });
+
+    // 4. 매핑 및 형변환
+    const finalItems = hybridDrugs.map((item) => {
       let p = (item.priceLabel || '').trim();
       const c = (item.reimbursement || '').trim() || '비급여';
       
@@ -137,7 +176,7 @@ export async function POST(req: Request) {
         productName: item.productName || '-',
         ingredientName: finalIngr,
         company: item.company || '-',
-        priceLabel: p + ' / ' + c,
+        priceLabel: p === '가격정보없음' ? '가격정보없음 / ' + c : p + ' / ' + c,
         reimbursement: c,
         insuranceCode: item.insuranceCode || '',
         standardCode: item.standardCode || '',
@@ -145,8 +184,8 @@ export async function POST(req: Request) {
         type: item.type || '',
         releaseDate: item.releaseDate || '',
         usageFrequency: finalFreq,
-        // 강화된 데이터인 경우 태그를 추가하여 알려줌
-        sourceService: isAugmented ? '자체DB(Supabase) + 공공API(실시간 채움)' : '자체DB(Supabase)',
+        // 강화된 데이터인 경우 태그를 추가하여 알려줌. 완전 API 출신이면 분기.
+        sourceService: item._isApiFallback ? '공공API(자체DB 누락)' : (isAugmented ? '자체DB(Supabase) + 공공API(실시간 채움)' : '자체DB(Supabase)'),
       };
     });
 
