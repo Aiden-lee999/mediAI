@@ -118,7 +118,7 @@ export async function POST(req: Request) {
     const disease = PUBLIC_DRUG_API_ENDPOINTS.find((s) => s.baseUrl.includes('diseaseInfoService1'));
     const componentEffect = PUBLIC_DRUG_API_ENDPOINTS.find((s) => s.baseUrl.includes('msupCmpnMeftInfoService'));
     const usage = PUBLIC_DRUG_API_ENDPOINTS.find((s) => s.baseUrl.includes('msupUserInfoService1.2'));
-    const priceRef = PUBLIC_DRUG_API_ENDPOINTS.find((s) => s.baseUrl.includes('dgamtrCtrInfoService1.2'));
+    const priceRef = PUBLIC_DRUG_API_ENDPOINTS.find((s) => s.baseUrl.includes('dgamtCrtrInfoService1.2'));
 
     const sections = (await Promise.all([
       safeSection('비급여 진료비', () => {
@@ -126,7 +126,7 @@ export async function POST(req: Request) {
         return callPublicDrugApi({
           serviceName: nonPayment.serviceName,
           baseUrl: nonPayment.baseUrl,
-          operation: '/getNonPaymentItmemCodeList2',
+          operation: '/getNonPaymentItemCodeList2',
           query: {
             yadmNm: body.company,
             itemNm: body.productName,
@@ -161,13 +161,15 @@ export async function POST(req: Request) {
       }),
       safeSection('의약품 사용 통계', () => {
         if (!usage) throw new Error('서비스 없음');
+        const now = new Date();
+        const month = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
         return callPublicDrugApi({
           serviceName: usage.serviceName,
           baseUrl: usage.baseUrl,
-          operation: '/getAtcStp4ClList1.2',
+          operation: '/getCmpnAreaList1.2',
           query: {
-            cmpnNm: body.ingredientName || body.productName,
-            ingrName: body.ingredientName || body.productName,
+            mdcareYm: month,
+            mdcinCmpnGnrlNm: body.ingredientName || body.productName,
           },
         });
       }),
