@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type DrugItem = {
   id: string;
@@ -8,9 +8,36 @@ type DrugItem = {
   ingredientName: string;
   company: string;
   priceLabel: string;
+  reimbursement: string;
+  insuranceCode: string;
+  standardCode: string;
+  atcCode: string;
+  type: string;
   releaseDate: string;
   usageFrequency: number;
   brandClass?: '오리지널(대장약)' | '복제약(제네릭)';
+};
+
+type DrugPackageInfo = {
+  label: string;
+  standardCode: string;
+};
+
+type DrugDetail = {
+  productName: string;
+  type: string;
+  company: string;
+  seller: string;
+  productionStatus: string;
+  insuranceInfo: string;
+  ministryClass: string;
+  kimsClass: string;
+  atcCode: string;
+  ingredientCode: string;
+  ingredientContent: string;
+  additives: string;
+  packageInfo: DrugPackageInfo[];
+  imageUrl?: string;
 };
 
 type SortKey = 'price' | 'releaseDate' | 'usageFrequency' | 'brandClass';
@@ -51,13 +78,33 @@ export default function DrugSearchPanel() {
   const [error, setError] = useState('');
   const [lastMeta, setLastMeta] = useState('');
   const [items, setItems] = useState<DrugItem[]>([]);
+  const [selectedDrug, setSelectedDrug] = useState<DrugItem | null>(null);
+  const [detail, setDetail] = useState<DrugDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('price');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  useEffect(() => {
+    // Warm up the search API in background to reduce first interactive request latency.
+    void fetch('/api/drugs/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productName: '타이레놀' }),
+      cache: 'no-store',
+    }).catch(() => {
+      // Ignore warm-up failures silently; this should not affect UX.
+    });
+  }, []);
 
   const sortedItems = useMemo(() => {
     const copied = [...items];
 
     copied.sort((a, b) => {
+      const classRank = (v: DrugItem['brandClass']) => (v === '오리지널(대장약)' ? 0 : 1);
+      const classDiff = classRank(a.brandClass) - classRank(b.brandClass);
+      if (classDiff !== 0) return classDiff;
+
       let av = 0;
       let bv = 0;
 
@@ -76,7 +123,11 @@ export default function DrugSearchPanel() {
       }
 
       const diff = av - bv;
-      return sortDirection === 'asc' ? diff : -diff;
+      if (diff !== 0) return sortDirection === 'asc' ? diff : -diff;
+
+      const freqDiff = (b.usageFrequency || 0) - (a.usageFrequency || 0);
+      if (freqDiff !== 0) return freqDiff;
+      return cleanProductName(a.productName).localeCompare(cleanProductName(b.productName), 'ko');
     });
 
     return copied;
@@ -139,7 +190,42 @@ export default function DrugSearchPanel() {
   const handleReset = () => {
     setForm({ productName: '', ingredientName: '', company: '' });
     setItems([]);
+    setSelectedDrug(null);
+    setDetail(null);
+    setDetailError('');
     setError('');
+  };
+
+  const handleSelectDrug = async (item: DrugItem) => {
+    setSelectedDrug(item);
+    setDetailLoading(true);
+    setDetailError('');
+
+    try {
+      const res = await fetch('/api/drugs/detail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productName: cleanProductName(item.productName),
+          company: item.company,
+          standardCode: item.standardCode,
+          insuranceCode: item.insuranceCode,
+          atcCode: item.atcCode,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data?.success || !data?.detail) {
+        throw new Error(data?.message || '상세 정보 조회에 실패했습니다.');
+      }
+
+      setDetail(data.detail as DrugDetail);
+    } catch (e: any) {
+      setDetail(null);
+      setDetailError(e?.message || '상세 정보 조회 중 오류가 발생했습니다.');
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   return (
@@ -239,9 +325,24 @@ export default function DrugSearchPanel() {
               </tr>
             </thead>
             <tbody>
-              {sortedItems.map((item) => (
-                <tr key={item.id} className="border-t hover:bg-blue-50">
-                  <td className="px-3 py-2 font-semibold text-blue-700">{cleanProductName(item.productName) || '-'}</td>
+              {sortedItems.map((item, idx) => (
+                <tr
+                  key={`${item.id}-${idx}`}
+                  className={`border-t hover:bg-blue-50 cursor-pointer ${selectedDrug?.id === item.id ? 'bg-blue-50' : ''}`}
+                  onClick={() => handleSelectDrug(item)}
+                >
+                  <td className="px-3 py-2 font-semibold text-blue-700">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleSelectDrug(item);
+                      }}
+                      className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                    >
+                      {cleanProductName(item.productName) || '-'}
+                    </button>
+                  </td>
                   <td className="px-3 py-2">{item.priceLabel || '-'}</td>
                   <td className="px-3 py-2">{item.brandClass || '복제약(제네릭)'}</td>
                   <td className="px-3 py-2">{item.ingredientName || '-'}</td>
@@ -259,6 +360,96 @@ export default function DrugSearchPanel() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="mt-6 bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b bg-slate-50">
+          <span className="text-sm font-bold text-slate-700">약제 상세 정보</span>
+        </div>
+
+        {!selectedDrug && (
+          <div className="px-4 py-8 text-sm text-slate-500">검색 결과에서 약제를 클릭하면 상세 정보가 표시됩니다.</div>
+        )}
+
+        {selectedDrug && detailLoading && (
+          <div className="px-4 py-8 text-sm text-slate-500">상세 정보를 불러오는 중입니다...</div>
+        )}
+
+        {selectedDrug && !detailLoading && detailError && (
+          <div className="px-4 py-8 text-sm text-red-600">{detailError}</div>
+        )}
+
+        {selectedDrug && !detailLoading && detail && (
+          <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-6">
+            <div className="space-y-2 text-sm">
+              <div className="grid grid-cols-[140px_1fr] gap-3 py-1 border-b border-slate-100">
+                <div className="font-semibold text-slate-700">구분</div>
+                <div>{detail.type || selectedDrug.type || '-'}</div>
+              </div>
+              <div className="grid grid-cols-[140px_1fr] gap-3 py-1 border-b border-slate-100">
+                <div className="font-semibold text-slate-700">업체명</div>
+                <div>{detail.company || selectedDrug.company || '-'}</div>
+              </div>
+              <div className="grid grid-cols-[140px_1fr] gap-3 py-1 border-b border-slate-100">
+                <div className="font-semibold text-slate-700">판매사</div>
+                <div>{detail.seller || detail.company || selectedDrug.company || '-'}</div>
+              </div>
+              <div className="grid grid-cols-[140px_1fr] gap-3 py-1 border-b border-slate-100">
+                <div className="font-semibold text-slate-700">생산판매현황</div>
+                <div>{detail.productionStatus || '-'}</div>
+              </div>
+              <div className="grid grid-cols-[140px_1fr] gap-3 py-1 border-b border-slate-100">
+                <div className="font-semibold text-slate-700">보험정보</div>
+                <div>{detail.insuranceInfo || `${selectedDrug.insuranceCode || '-'} / ${selectedDrug.priceLabel || '-'}`}</div>
+              </div>
+              <div className="grid grid-cols-[140px_1fr] gap-3 py-1 border-b border-slate-100">
+                <div className="font-semibold text-slate-700">복지부 분류</div>
+                <div>{detail.ministryClass || '-'}</div>
+              </div>
+              <div className="grid grid-cols-[140px_1fr] gap-3 py-1 border-b border-slate-100">
+                <div className="font-semibold text-slate-700">KIMS 분류</div>
+                <div>{detail.kimsClass || '-'}</div>
+              </div>
+              <div className="grid grid-cols-[140px_1fr] gap-3 py-1 border-b border-slate-100">
+                <div className="font-semibold text-slate-700">ATC 코드</div>
+                <div>{detail.atcCode || selectedDrug.atcCode || '-'}</div>
+              </div>
+              <div className="grid grid-cols-[140px_1fr] gap-3 py-1 border-b border-slate-100">
+                <div className="font-semibold text-slate-700">주성분코드</div>
+                <div>{detail.ingredientCode || '-'}</div>
+              </div>
+              <div className="grid grid-cols-[140px_1fr] gap-3 py-1 border-b border-slate-100">
+                <div className="font-semibold text-slate-700">성분 및 함량</div>
+                <div className="whitespace-pre-wrap break-words">{detail.ingredientContent || selectedDrug.ingredientName || '-'}</div>
+              </div>
+              <div className="grid grid-cols-[140px_1fr] gap-3 py-1 border-b border-slate-100">
+                <div className="font-semibold text-slate-700">첨가제</div>
+                <div className="whitespace-pre-wrap break-words">{detail.additives || '-'}</div>
+              </div>
+              <div className="grid grid-cols-[140px_1fr] gap-3 py-1">
+                <div className="font-semibold text-slate-700">포장정보(표준코드)</div>
+                <div className="space-y-1">
+                  {(detail.packageInfo || []).map((pkg, idx) => (
+                    <div key={`${pkg.standardCode}-${idx}`} className="text-xs sm:text-sm">
+                      {pkg.label} {pkg.standardCode ? ` ${pkg.standardCode}` : ''}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-start justify-center">
+              {detail.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={detail.imageUrl} alt={detail.productName || selectedDrug.productName} className="w-full max-w-[220px] rounded-lg border border-slate-200 object-contain bg-white" />
+              ) : (
+                <div className="w-full max-w-[220px] h-[150px] rounded-lg border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-500 flex items-center justify-center text-center p-3">
+                  식별 이미지 없음
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

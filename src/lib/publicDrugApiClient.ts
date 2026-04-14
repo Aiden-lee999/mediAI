@@ -7,7 +7,37 @@ type ApiCallOptions = {
   operation: string;
   query?: Record<string, string | number | undefined>;
   serviceName?: string;
+  timeoutMs?: number;
+  retries?: number;
 };
+
+async function fetchWithTimeoutAndRetry(url: string, timeoutMs: number, retries: number) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      return res;
+    } catch (error) {
+      clearTimeout(timer);
+      lastError = error;
+
+      // Retry only for network/timeout failures.
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('공공 API 호출 중 알 수 없는 오류가 발생했습니다.');
+}
 
 export type NormalizedDrugItem = {
   id: string;
@@ -91,6 +121,8 @@ function toArray(input: unknown): GenericItem[] {
 
 export async function callPublicDrugApi(options: ApiCallOptions) {
   const serviceKey = getDataGoKrKey();
+  const timeoutMs = options.timeoutMs ?? 12000;
+  const retries = options.retries ?? 1;
   const params = new URLSearchParams({
     serviceKey,
     _type: 'json',
@@ -105,7 +137,7 @@ export async function callPublicDrugApi(options: ApiCallOptions) {
   });
 
   const url = `${options.baseUrl}${options.operation}?${params.toString()}`;
-  const res = await fetch(url, { cache: 'no-store' });
+  const res = await fetchWithTimeoutAndRetry(url, timeoutMs, retries);
   const text = await res.text();
 
   if (!res.ok) {

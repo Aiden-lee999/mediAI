@@ -11,6 +11,41 @@ export type DrugPriceRow = {
 export type DrugPriceData = {
   price: string;
   ingredient: string;
+  productName?: string;
+}
+
+function codeAliases(rawCode: string) {
+  const raw = (rawCode || '').trim();
+  const digits = raw.replace(/\D/g, '');
+  const aliases = new Set<string>();
+
+  if (raw) aliases.add(raw);
+  if (digits) aliases.add(digits);
+
+  // Common mapping used in this project: 13-digit barcode with 880 prefix -> 9-digit product code
+  if (digits.length === 13 && digits.startsWith('880')) {
+    aliases.add(digits.slice(3, 12));
+  }
+
+  // Some product codes include a trailing checksum-like digit.
+  if (digits.length === 10) {
+    aliases.add(digits.slice(0, 9));
+    aliases.add(digits.slice(1));
+  }
+
+  if (digits.length === 13) {
+    aliases.add(digits.slice(0, 9));
+  }
+
+  if (digits.length > 9) {
+    aliases.add(digits.slice(-9));
+  }
+
+  if (digits.length > 0 && digits.length < 9) {
+    aliases.add(digits.padStart(9, '0'));
+  }
+
+  return [...aliases].filter(Boolean);
 }
 
 let cache: Map<string, DrugPriceData> | null = null;
@@ -89,6 +124,7 @@ export async function loadRichDrugPrices(): Promise<Map<string, DrugPriceData>> 
     const safeProductCodeIdx = headers.findIndex(h => h.includes('제품코드')) > -1 ? headers.findIndex(h => h.includes('제품코드')) : 8;
     const safePriceIdx = headers.findIndex(h => h.includes('상한금액')) > -1 ? headers.findIndex(h => h.includes('상한금액')) : 13;
     const safeIngrIdx = headers.findIndex(h => h.includes('주성분명')) > -1 ? headers.findIndex(h => h.includes('주성분명')) : 7;
+    const safeNameIdx = headers.findIndex(h => h.includes('제품명')) > -1 ? headers.findIndex(h => h.includes('제품명')) : 9;
 
     const richMap = new Map<string, DrugPriceData>();
 
@@ -99,9 +135,15 @@ export async function loadRichDrugPrices(): Promise<Map<string, DrugPriceData>> 
       const productCode = (cols[safeProductCodeIdx] || '').trim();
       let price = (cols[safePriceIdx] || '').trim().replace(/[",\s]/g, '');
       let ingredient = (cols[safeIngrIdx] || '').trim();
+      const productName = (cols[safeNameIdx] || '').trim();
 
       if (productCode && price) {
-         richMap.set(productCode, { price, ingredient });
+         const data: DrugPriceData = { price, ingredient, productName };
+         for (const alias of codeAliases(productCode)) {
+           if (!richMap.has(alias)) {
+             richMap.set(alias, data);
+           }
+         }
       }
     }
 

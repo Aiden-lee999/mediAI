@@ -159,6 +159,10 @@ function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null 
 // ==========================================
 function SortableDrugTable({ initialDrugs }: { initialDrugs: any }) {
     const [drugs, setDrugs] = useState<any[]>([]);
+  const [selectedDrugName, setSelectedDrugName] = useState('');
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [detail, setDetail] = useState<any | null>(null);
     
     useEffect(() => {
       if (Array.isArray(initialDrugs)) {
@@ -209,7 +213,42 @@ function SortableDrugTable({ initialDrugs }: { initialDrugs: any }) {
         <tbody>
           {drugs.map((d, i) => (
             <tr key={i} className="border-b last:border-0 hover:bg-blue-50 transition">
-              <td className="p-2 font-bold text-blue-700">{d.name}</td>
+              <td className="p-2 font-bold text-blue-700">
+                <button
+                  type="button"
+                  className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                  onClick={async () => {
+                    setSelectedDrugName(String(d.name || ''));
+                    setDetailLoading(true);
+                    setDetailError('');
+                    setDetail(null);
+                    try {
+                      const res = await fetch('/api/drugs/detail', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          productName: String(d.name || ''),
+                          company: String(d.company || ''),
+                          standardCode: String(d.standardCode || ''),
+                          insuranceCode: String(d.insuranceCode || ''),
+                          atcCode: String(d.atcCode || ''),
+                        }),
+                      });
+                      const payload = await res.json();
+                      if (!res.ok || !payload?.success || !payload?.detail) {
+                        throw new Error(payload?.message || '상세 정보 조회에 실패했습니다.');
+                      }
+                      setDetail(payload.detail);
+                    } catch (error: any) {
+                      setDetailError(error?.message || '상세 정보 조회 중 오류가 발생했습니다.');
+                    } finally {
+                      setDetailLoading(false);
+                    }
+                  }}
+                >
+                  {d.name}
+                </button>
+              </td>
               <td className="p-2 text-slate-600 text-xs">{d.ingredient}</td>
               <td className="p-2 text-xs">{d.price}<br /><span className="text-[10px] text-slate-400">{d.class || '전문의약품'}</span></td>
               <td className="p-2 text-slate-600 font-medium text-xs"> {d.company}</td>
@@ -217,6 +256,22 @@ function SortableDrugTable({ initialDrugs }: { initialDrugs: any }) {
           ))}
         </tbody>
       </table>
+
+      {(detailLoading || detailError || detail) && (
+        <div className="border-t border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+          <div className="font-semibold text-slate-800 mb-1">선택 약제: {selectedDrugName || '-'}</div>
+          {detailLoading && <div className="text-slate-500">상세 정보를 불러오는 중...</div>}
+          {!detailLoading && detailError && <div className="text-red-600">{detailError}</div>}
+          {!detailLoading && detail && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>구분: {detail.type || '-'}</div>
+              <div>보험정보: {detail.insuranceInfo || '-'}</div>
+              <div>ATC: {detail.atcCode || '-'}</div>
+              <div>성분: {detail.ingredientContent || '-'}</div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -305,36 +360,53 @@ function DashboardPageContent() {
     const keyword = extractDrugKeyword(question);
     const queryNames = [...new Set([keyword, ...modelNames].filter(Boolean))].slice(0, 20);
 
+    const mergeCards = (base: any[], incoming: any[]) => {
+      const merged = [...base];
+      const seen = new Set(base.map((x) => String(x?.name || '').trim()).filter(Boolean));
+      for (const card of incoming) {
+        const key = String(card?.name || '').trim();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        merged.push(card);
+      }
+      return merged;
+    };
+
+    const fetchCards = async (payload: Record<string, string>) => {
+      const res = await fetch('/api/drugs/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) return [] as any[];
+      const data = await res.json();
+      const items = Array.isArray(data?.items) ? data.items : [];
+      return items.map((item: any) => ({
+        name: String(item?.productName || '-'),
+        ingredient: String(item?.ingredientName || '-'),
+        price: String(item?.priceLabel || '가격정보없음'),
+        class: String(item?.reimbursement || '확인요망'),
+        company: String(item?.company || '-'),
+        standardCode: String(item?.standardCode || ''),
+        insuranceCode: String(item?.insuranceCode || ''),
+        atcCode: String(item?.atcCode || ''),
+      }));
+    };
+
     let verifiedCards: any[] = [];
     if (queryNames.length > 0) {
       try {
-        const res = await fetch('/api/drugs/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ productName: queryNames.join(',') }),
-        });
+        verifiedCards = await fetchCards({ productName: queryNames.join(',') });
 
-        if (res.ok) {
-          const data = await res.json();
-          const items = Array.isArray(data?.items) ? data.items : [];
-
-          const uniq = new Set<string>();
-          verifiedCards = items
-            .map((item: any) => ({
-              name: String(item?.productName || '-'),
-              ingredient: String(item?.ingredientName || '-'),
-              price: String(item?.priceLabel || '가격정보없음'),
-              class: String(item?.reimbursement || '확인요망'),
-              company: String(item?.company || '-'),
-            }))
-            .filter((card: any) => {
-              const key = card.name;
-              if (!key || key === '-' || uniq.has(key)) return false;
-              uniq.add(key);
-              return true;
-            })
-            .slice(0, 20);
+        if (keyword) {
+          const ingredientCards = await fetchCards({ ingredientName: keyword });
+          verifiedCards = mergeCards(verifiedCards, ingredientCards);
         }
+
+        verifiedCards = verifiedCards
+          .filter((card: any) => card?.name && card.name !== '-')
+          .slice(0, 20);
       } catch {
         verifiedCards = [];
       }

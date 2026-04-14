@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "sync:batch": "npx --yes tsx scripts/run_sync_batch.ts",
+    "sync:msup-report": "npx --yes tsx scripts/generate_msup_escalation_report.ts --write-md=true"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",

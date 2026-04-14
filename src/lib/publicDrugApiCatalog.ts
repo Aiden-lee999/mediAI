@@ -102,7 +102,7 @@ export const PUBLIC_DRUG_API_ENDPOINTS: PublicDrugApiEndpoint[] = [
     serviceName: '건강보험심사평가원_약가기준정보조회서비스',
     baseUrl: 'https://apis.data.go.kr/B551182/dgamtCrtrInfoService1.2',
     defaultFormat: 'XML',
-    operations: ['/getDgamtList', '/getCmcdDgamtList'],
+    operations: ['/getDgamtList'],
   },
 ];
 

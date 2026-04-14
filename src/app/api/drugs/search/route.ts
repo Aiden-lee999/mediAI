@@ -1,5 +1,5 @@
 ﻿import { NextResponse } from 'next/server';
-import { getIngredientNameByCode, getIngredientNameByStandardCode, loadRichDrugPrices } from '@/lib/drugPricesCsv';
+import { loadIngredientCodeMap, loadRichDrugPrices, searchProductsByIngredient } from '@/lib/drugPricesCsv';
 import { prisma } from '@/lib/prisma';
 
 type SearchItem = {
@@ -19,13 +19,79 @@ type SearchItem = {
   sourceService: string;
 };
 
+type QueryPayload = {
+  productName?: string;
+  ingredientName?: string;
+  company?: string;
+};
+
+const SEARCH_CACHE_TTL_MS = 1000 * 30;
+const SEARCH_RESULT_LIMIT = 120;
+const searchCache = new Map<string, { expiresAt: number; data: { success: boolean; count: number; items: SearchItem[]; fallbackUsed: boolean } }>();
+
+function makeCacheKey(payload: QueryPayload) {
+  const productName = (payload.productName || '').trim().toLowerCase();
+  const ingredientName = (payload.ingredientName || '').trim().toLowerCase();
+  const company = (payload.company || '').trim().toLowerCase();
+  return JSON.stringify({ productName, ingredientName, company });
+}
+
 function looksLikeCode(value: string) {
   return /^[A-Z0-9]{6,}$/i.test(value);
+}
+
+function getAtcHintsByKeyword(keyword: string) {
+  const q = (keyword || '').trim();
+  if (!q) return [] as string[];
+
+  const hints: Array<{ tokens: string[]; atcPrefixes: string[] }> = [
+    { tokens: ['아세트아미노펜', 'acetaminophen', '파라세타몰', 'paracetamol'], atcPrefixes: ['N02BE'] },
+    { tokens: ['이부프로펜', 'ibuprofen'], atcPrefixes: ['M01AE'] },
+  ];
+
+  for (const hint of hints) {
+    if (hint.tokens.some((token) => q.toLowerCase().includes(token.toLowerCase()))) {
+      return hint.atcPrefixes;
+    }
+  }
+
+  return [] as string[];
+}
+
+function getStandardCodePrefixesByKeyword(keyword: string) {
+  const q = (keyword || '').trim().toLowerCase();
+  if (!q) return [] as string[];
+
+  if (q.includes('아세트아미노펜') || q.includes('acetaminophen') || q.includes('paracetamol') || q.includes('타이레놀')) {
+    // Operational fallback for acetaminophen-family products in current dataset.
+    return ['8806469', '8806723'];
+  }
+
+  return [] as string[];
+}
+
+function getProductNameHintsByKeyword(keyword: string) {
+  const q = (keyword || '').trim().toLowerCase();
+  if (!q) return [] as string[];
+
+  if (q.includes('아세트아미노펜') || q.includes('acetaminophen') || q.includes('paracetamol')) {
+    return ['타이레놀', 'tylenol'];
+  }
+
+  return [] as string[];
 }
 
 function ingredientFromProductName(productName: string) {
   const match = productName.match(/\(([^)]+)\)/);
   return match?.[1]?.trim() || '';
+}
+
+function looksLikeMojibake(value: string) {
+  const text = (value || '').trim();
+  if (!text) return false;
+  if (/[\u3131-\u318E\uAC00-\uD7A3]/.test(text)) return false;
+  const latinExtendedHits = text.match(/[\u00C0-\u00FF]/g) || [];
+  return latinExtendedHits.length >= 2;
 }
 
 function normalizeBaseProductName(name: string) {
@@ -34,6 +100,17 @@ function normalizeBaseProductName(name: string) {
     .split('(')[0]
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeSearchText(value: string) {
+  return (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function splitSearchTokens(value: string) {
+  return normalizeSearchText(value)
+    .split(/[\s,]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
 }
 
 function toDigits(value: string) {
@@ -73,217 +150,482 @@ function buildCsvLookupCodes(standardCode: string, insuranceCode: string) {
   return Array.from(codes);
 }
 
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const { productName, ingredientName, company } = body;
+async function runSearch(body: QueryPayload) {
+  const { productName, ingredientName, company } = body;
 
-    const searchProducts = productName ? productName.split(',').map((p: string) => p.trim()).filter(Boolean) : [];
+  const searchProducts = productName ? productName.split(',').map((p: string) => p.trim()).filter(Boolean) : [];
+  const ingredientKeywordCandidate = (ingredientName || '').trim() || (searchProducts.length === 1 ? searchProducts[0] : '');
+  const ingredientHints = getAtcHintsByKeyword(ingredientKeywordCandidate);
+  const productNameHints = getProductNameHintsByKeyword(ingredientKeywordCandidate);
+  const ingredientCodePrefixHints = getStandardCodePrefixesByKeyword(ingredientKeywordCandidate);
+  const isIngredientFocusedQuery = ingredientHints.length > 0 || ingredientCodePrefixHints.length > 0;
+  const resultLimit = isIngredientFocusedQuery ? 320 : SEARCH_RESULT_LIMIT;
 
+  const isSingleCodeSearch =
+    searchProducts.length === 1 &&
+    (looksLikeCode(searchProducts[0]) || /^[0-9]{7,}$/.test(toDigits(searchProducts[0])));
+
+  const buildConditions = (mode: 'strict' | 'broad') => {
     const conditions: any[] = [];
     if (searchProducts.length > 0) {
       if (searchProducts.length === 1) {
-         const q = searchProducts[0];
-         conditions.push({
-           OR: [
-             { productName: { contains: q, mode: 'insensitive' } },
-             { ingredientName: { contains: q, mode: 'insensitive' } },
-             { company: { contains: q, mode: 'insensitive' } },
-             { standardCode: { contains: q, mode: 'insensitive' } },
-             { insuranceCode: { contains: q, mode: 'insensitive' } },
-             { atcCode: { contains: q, mode: 'insensitive' } },
-           ],
-         });
+        const q = searchProducts[0];
+        const codeLike = looksLikeCode(q) || /^[0-9]{7,}$/.test(toDigits(q));
+        if (codeLike) {
+          // Exact/prefix match first to avoid expensive full wildcard scans.
+          conditions.push({
+            OR: [
+              { standardCode: { equals: q, mode: 'insensitive' } },
+              { insuranceCode: { equals: q, mode: 'insensitive' } },
+              { atcCode: { equals: q, mode: 'insensitive' } },
+              { standardCode: { startsWith: q, mode: 'insensitive' } },
+              { insuranceCode: { startsWith: q, mode: 'insensitive' } },
+              { atcCode: { startsWith: q, mode: 'insensitive' } },
+              ...(mode === 'broad'
+                ? [
+                    // Skip broad contains for code search to avoid very expensive wildcard scans.
+                  ]
+                : []),
+            ],
+          });
+        } else {
+          conditions.push({
+            OR: [
+              { productName: { startsWith: q, mode: 'insensitive' } },
+              { ingredientName: { startsWith: q, mode: 'insensitive' } },
+              { company: { startsWith: q, mode: 'insensitive' } },
+              ...(mode === 'broad'
+                ? [
+                    { productName: { contains: q, mode: 'insensitive' } },
+                    { ingredientName: { contains: q, mode: 'insensitive' } },
+                    { company: { contains: q, mode: 'insensitive' } },
+                  ]
+                : []),
+            ],
+          });
+        }
       } else {
-         conditions.push({
-           OR: searchProducts.flatMap((p: string) => ([
-             { productName: { contains: p, mode: 'insensitive' } },
-             { ingredientName: { contains: p, mode: 'insensitive' } },
-             { company: { contains: p, mode: 'insensitive' } },
-             { standardCode: { contains: p, mode: 'insensitive' } },
-             { insuranceCode: { contains: p, mode: 'insensitive' } },
-             { atcCode: { contains: p, mode: 'insensitive' } },
-           ]))
-         });
+        const multiTokenOr =
+          mode === 'strict'
+            ? searchProducts.flatMap((p: string) => [
+                { productName: { startsWith: p, mode: 'insensitive' as const } },
+                { ingredientName: { startsWith: p, mode: 'insensitive' as const } },
+              ])
+            : searchProducts.flatMap((p: string) => [
+                { productName: { contains: p, mode: 'insensitive' as const } },
+                { ingredientName: { contains: p, mode: 'insensitive' as const } },
+              ]);
+
+        conditions.push({
+          OR: multiTokenOr,
+        });
       }
     }
-    
-    if (company) conditions.push({ company: { contains: company, mode: 'insensitive' } });
-    if (ingredientName) conditions.push({ ingredientName: { contains: ingredientName, mode: 'insensitive' } });
-    
-    // 조건이 비어있으면 전체 중 처방빈도 높은 순으로 150개 반환되도록 유지 (에러/빈배열 반환 제거)
-    let drugs = await prisma.drug.findMany({
-      where: conditions.length > 0 ? { AND: conditions } : undefined,
-      take: 150,
-      orderBy: { usageFrequency: 'desc' }
-    });
 
-    // If filtered search yields nothing, return default top list instead of empty results.
-    const usedDefaultFallback = conditions.length > 0 && drugs.length === 0;
-    if (usedDefaultFallback) {
+    if (company) {
+      conditions.push(
+        mode === 'strict'
+          ? { company: { startsWith: company, mode: 'insensitive' } }
+          : { company: { contains: company, mode: 'insensitive' } }
+      );
+    }
+    if (ingredientName) {
+      conditions.push(
+        mode === 'strict'
+          ? { ingredientName: { startsWith: ingredientName, mode: 'insensitive' } }
+          : { ingredientName: { contains: ingredientName, mode: 'insensitive' } }
+      );
+    }
+
+    return conditions;
+  };
+
+  const strictConditions = buildConditions('strict');
+  const broadConditions = buildConditions('broad');
+
+  const selectFields = {
+    id: true,
+    productName: true,
+    ingredientName: true,
+    company: true,
+    standardCode: true,
+    insuranceCode: true,
+    atcCode: true,
+    priceLabel: true,
+    reimbursement: true,
+    type: true,
+    releaseDate: true,
+    usageFrequency: true,
+  } as const;
+
+  // Strict query first for fast paths; fallback to broad only when needed.
+  let drugs = await prisma.drug.findMany({
+    where: strictConditions.length > 0 ? { AND: strictConditions } : undefined,
+    select: selectFields,
+    take: resultLimit,
+    orderBy: { usageFrequency: 'desc' },
+  });
+
+  if (strictConditions.length > 0 && drugs.length === 0) {
+    if (!isSingleCodeSearch) {
       drugs = await prisma.drug.findMany({
-        take: 150,
-        orderBy: { usageFrequency: 'desc' }
+        where: { AND: broadConditions },
+        select: selectFields,
+        take: resultLimit,
+        orderBy: { usageFrequency: 'desc' },
+      });
+    }
+  }
+
+  if (strictConditions.length > 0 && drugs.length === 0 && !isSingleCodeSearch) {
+    const fallbackKeyword = (ingredientName || searchProducts[0] || '').trim();
+    const atcHints = getAtcHintsByKeyword(fallbackKeyword);
+    const codePrefixHints = getStandardCodePrefixesByKeyword(fallbackKeyword);
+
+    if (atcHints.length > 0) {
+      drugs = await prisma.drug.findMany({
+        where: {
+          OR: atcHints.map((prefix) => ({
+            atcCode: { startsWith: prefix, mode: 'insensitive' },
+          })),
+        },
+        select: selectFields,
+        take: resultLimit,
+        orderBy: { usageFrequency: 'desc' },
       });
     }
 
-    const originalMakers = ['존슨앤드존슨판매', '한국얀센', '화이자', '얀센', '글락소', '노바티스', '아스트라제네카', '릴리', '사노피', '다케다', '머크', '베링거', 'MSD'];
-    const originalNames = ['타이레놀', '리피토', '글리벡', '노바스크', '아토르바스타틴'];
-    const csvPriceMap = await loadRichDrugPrices();
-    const ingredientCodeSet = new Set<string>();
-    const standardCodeSet = new Set<string>();
-
-    for (const drug of drugs) {
-      const code = (drug.ingredientName || '').trim();
-      if (code && looksLikeCode(code)) ingredientCodeSet.add(code);
-      const std = (drug.standardCode || '').trim();
-      if (std) standardCodeSet.add(std);
+    if (drugs.length === 0 && codePrefixHints.length > 0) {
+      drugs = await prisma.drug.findMany({
+        where: {
+          OR: codePrefixHints.flatMap((prefix) => ([
+            { standardCode: { startsWith: prefix } },
+            { insuranceCode: { startsWith: prefix } },
+          ])),
+        },
+        select: selectFields,
+        take: resultLimit,
+        orderBy: { usageFrequency: 'desc' },
+      });
     }
 
-    const ingredientNameMap = new Map<string, string>();
-    const standardIngredientNameMap = new Map<string, string>();
-    if (ingredientCodeSet.size > 0) {
-      await Promise.all(
-        Array.from(ingredientCodeSet).map(async (code) => {
-          const ingredientName = await getIngredientNameByCode(code);
-          if (ingredientName) ingredientNameMap.set(code, ingredientName);
-        })
-      );
-    }
-
-    if (standardCodeSet.size > 0) {
-      await Promise.all(
-        Array.from(standardCodeSet).map(async (code) => {
-          const ingredientName = await getIngredientNameByStandardCode(code);
-          if (ingredientName) standardIngredientNameMap.set(code, ingredientName);
-        })
-      );
-    }
-    
-    const finalItems: SearchItem[] = drugs.map((item: (typeof drugs)[number]) => {
-      const standardCode = (item.standardCode || '').trim();
-      const insuranceCode = (item.insuranceCode || '').trim();
-      const csvLookupCodes = buildCsvLookupCodes(standardCode, insuranceCode);
-      const csvData = csvLookupCodes.map((code) => csvPriceMap.get(code)).find(Boolean);
-
-      let p = (item.priceLabel || '').trim().replace(/,/g, '');
-      const c = (item.reimbursement || '').trim() || '비급여';
-      if ((!p || p === '가격정보없음' || !/[0-9]/.test(p)) && csvData?.price) {
-        p = String(csvData.price).trim().replace(/,/g, '');
+    if (drugs.length > 0) {
+      // Found via ATC hint fallback.
+    } else if (fallbackKeyword) {
+      const candidateNames = await searchProductsByIngredient(fallbackKeyword);
+      if (candidateNames.length > 0) {
+        drugs = await prisma.drug.findMany({
+          where: {
+            OR: candidateNames.map((name) => ({
+              productName: { contains: name, mode: 'insensitive' },
+            })),
+          },
+          select: selectFields,
+          take: resultLimit,
+          orderBy: { usageFrequency: 'desc' },
+        });
       }
 
-      let finalIngr = (item.ingredientName || '').trim();
-      const mappedIngredientByStandard =
-        standardIngredientNameMap.get(standardCode) ||
-        standardIngredientNameMap.get(toProductCode(standardCode));
-      if (!finalIngr || finalIngr === '-' || looksLikeCode(finalIngr)) {
-        finalIngr = (
-          ingredientNameMap.get(finalIngr) ||
-          mappedIngredientByStandard ||
-          csvData?.ingredient ||
-          ingredientFromProductName(item.productName || '') ||
-          '-'
-        ).trim();
-      }
+      if (drugs.length === 0) {
+        const csvMap = await loadRichDrugPrices();
+        const codeCandidates = new Set<string>();
 
-      if (p && /[0-9]/.test(p) && p !== '가격정보없음') {
-        if (!p.includes('원')) p += '원';
-      } else if (c.includes('비급여')) {
-        p = '비급여(공시약가없음)';
-      } else {
-        p = '가격정보없음';
-      }
+        for (const [code, data] of csvMap.entries()) {
+          const ingredientHit = (data.ingredient || '').includes(fallbackKeyword);
+          const productHit = (data.productName || '').includes(fallbackKeyword);
+          if (!ingredientHit && !productHit) continue;
 
-      let finalFreq = item.usageFrequency || 0;
-      const isOriginalCompany = !!(item.company && originalMakers.some(m => item.company?.includes(m)));
-      const isOriginalName = originalNames.some(m => item.productName.includes(m));
-      const brandClass: SearchItem['brandClass'] = (isOriginalCompany || isOriginalName) ? '오리지널(대장약)' : '복제약(제네릭)';
-      
-      if (isOriginalCompany) {
-         finalFreq += 50000; 
-      }
-      if (isOriginalName) {
-         finalFreq += 60000;
-      }
+          const digits = toDigits(code);
+          if (digits.length >= 9) {
+            codeCandidates.add(digits);
+          }
 
-      return {
-        id: item.standardCode || item.id,
-        productName: item.productName || '-',
-        ingredientName: finalIngr,
-        company: item.company || '-',
-        priceLabel:
-          p === '가격정보없음'
-            ? '가격정보없음 / ' + c
-            : p.startsWith('비급여(')
-              ? p
-              : p + ' / ' + c,
-        reimbursement: c,
-        insuranceCode: item.insuranceCode || '',
-        standardCode: item.standardCode || '',
-        atcCode: item.atcCode || '',
-        type: item.type || '',
-        releaseDate: item.releaseDate || '',
-        usageFrequency: finalFreq,
-        brandClass,
-        sourceService: csvData?.price || csvData?.ingredient ? '자체DB+CSV 보강 조회' : '자체DB 초고속 조회'
-      };
-    });
+          const productCode = toProductCode(code);
+          if (productCode) {
+            codeCandidates.add(productCode);
+          }
 
-    // Propagate known prices to variants sharing the same base product name.
-    const knownPriceByBaseName = new Map<string, string>();
-    for (const item of finalItems) {
-      if (/[0-9]/.test(item.priceLabel) && !item.priceLabel.startsWith('가격정보없음')) {
-        const baseName = normalizeBaseProductName(item.productName);
-        if (baseName && !knownPriceByBaseName.has(baseName)) {
-          const numericPrice = item.priceLabel.split('/')[0].trim();
-          knownPriceByBaseName.set(baseName, numericPrice);
+          if (codeCandidates.size >= 120) break;
+        }
+
+        const codes = Array.from(codeCandidates);
+        if (codes.length > 0) {
+          const fullCodes = codes.filter((code) => code.length >= 10);
+          const productCodes = codes.filter((code) => code.length === 9);
+
+          drugs = await prisma.drug.findMany({
+            where: {
+              OR: [
+                ...(fullCodes.length > 0
+                  ? [
+                      { standardCode: { in: fullCodes } },
+                      { insuranceCode: { in: fullCodes } },
+                    ]
+                  : []),
+                ...productCodes.flatMap((code) => ([
+                  { standardCode: { contains: code } },
+                  { insuranceCode: { contains: code } },
+                  { standardCode: { startsWith: `880${code}` } },
+                  { insuranceCode: { startsWith: `880${code}` } },
+                ])),
+              ],
+            },
+            select: selectFields,
+            take: resultLimit,
+            orderBy: { usageFrequency: 'desc' },
+          });
         }
       }
     }
+  }
 
-    const normalizedItems = finalItems.map((item) => {
-      if (!item.priceLabel.startsWith('가격정보없음')) return item;
-
-      const baseName = normalizeBaseProductName(item.productName);
-      const inferredPrice = knownPriceByBaseName.get(baseName);
-      if (!inferredPrice) return item;
-
-      return {
-        ...item,
-        priceLabel: `${inferredPrice} / ${item.reimbursement}`,
-      };
+  if (isIngredientFocusedQuery && ingredientCodePrefixHints.length > 0 && drugs.length < resultLimit) {
+    const codeHintDrugs = await prisma.drug.findMany({
+      where: {
+        OR: ingredientCodePrefixHints.flatMap((prefix) => ([
+          { standardCode: { startsWith: prefix } },
+          { insuranceCode: { startsWith: prefix } },
+        ])),
+      },
+      select: selectFields,
+      take: resultLimit,
+      orderBy: { usageFrequency: 'desc' },
     });
 
-    // 제품명+제조사 기준 중복을 제거하고, 더 높은 빈도 값을 대표값으로 사용
-    const dedupMap = new Map<string, SearchItem>();
-    for (const item of normalizedItems) {
-      const key = `${item.productName}__${item.company}`;
-      const prev = dedupMap.get(key);
-      if (!prev || item.usageFrequency > prev.usageFrequency) {
-        dedupMap.set(key, item);
+    const merged = new Map<string, (typeof drugs)[number]>();
+    for (const row of [...drugs, ...codeHintDrugs]) {
+      const key = `${row.standardCode || ''}__${row.productName || ''}__${row.company || ''}`;
+      if (!merged.has(key)) {
+        merged.set(key, row);
       }
     }
+    drugs = Array.from(merged.values()).slice(0, resultLimit);
+  }
 
-    const dedupedItems = Array.from(dedupMap.values());
-
-    // 정렬 우선순위: 오리지널/복제약 구분 -> 처방빈도 desc -> 제품명 asc
-    dedupedItems.sort((a: SearchItem, b: SearchItem) => {
-      const classRank = (v: SearchItem['brandClass']) => (v === '오리지널(대장약)' ? 0 : 1);
-      const classDiff = classRank(a.brandClass) - classRank(b.brandClass);
-      if (classDiff !== 0) return classDiff;
-
-      const freqDiff = b.usageFrequency - a.usageFrequency;
-      if (freqDiff !== 0) return freqDiff;
-
-      return a.productName.localeCompare(b.productName, 'ko');
+  if (isIngredientFocusedQuery && ingredientHints.length > 0 && drugs.length < resultLimit) {
+    const supplementDrugs = await prisma.drug.findMany({
+      where: {
+        OR: ingredientHints.map((prefix) => ({
+          atcCode: { startsWith: prefix, mode: 'insensitive' },
+        })),
+      },
+      select: selectFields,
+      take: resultLimit,
+      orderBy: { usageFrequency: 'desc' },
     });
 
-    return NextResponse.json({
-      success: true,
-      count: dedupedItems.length,
-      items: dedupedItems,
-      fallbackUsed: usedDefaultFallback,
+    const merged = new Map<string, (typeof drugs)[number]>();
+    for (const row of [...drugs, ...supplementDrugs]) {
+      const key = `${row.standardCode || ''}__${row.productName || ''}__${row.company || ''}`;
+      if (!merged.has(key)) {
+        merged.set(key, row);
+      }
+    }
+    drugs = Array.from(merged.values()).slice(0, resultLimit);
+  }
+
+  if (isIngredientFocusedQuery && productNameHints.length > 0) {
+    const productHintDrugs = await prisma.drug.findMany({
+      where: {
+        OR: productNameHints.map((hint) => ({
+          productName: { contains: hint, mode: 'insensitive' },
+        })),
+      },
+      select: selectFields,
+      take: resultLimit,
+      orderBy: { usageFrequency: 'desc' },
     });
+
+    const merged = new Map<string, (typeof drugs)[number]>();
+    for (const row of [...productHintDrugs, ...drugs]) {
+      const key = `${row.standardCode || ''}__${row.productName || ''}__${row.company || ''}`;
+      if (!merged.has(key)) {
+        merged.set(key, row);
+      }
+    }
+    drugs = Array.from(merged.values()).slice(0, resultLimit);
+  }
+
+  const usedDefaultFallback = false;
+
+  const originalMakers = ['존슨앤드존슨판매', '한국얀센', '화이자', '얀센', '글락소', '노바티스', '아스트라제네카', '릴리', '사노피', '다케다', '머크', '베링거', 'MSD'];
+  // Keep brand-name based signals only. Ingredient names (e.g. 아토르바스타틴) misclassify many generics as originals.
+  const originalNames = ['타이레놀', '리피토', '글리벡', '노바스크'];
+  const needsCsvPrice = drugs.some((item) => {
+    const p = (item.priceLabel || '').trim().replace(/,/g, '');
+    return !p || p === '가격정보없음' || !/[0-9]/.test(p);
+  });
+  const needsCsvIngredient = drugs.some((item) => {
+    const ingr = (item.ingredientName || '').trim();
+    return !ingr || ingr === '-' || looksLikeCode(ingr);
+  });
+
+  const csvPriceMap = needsCsvPrice ? await loadRichDrugPrices() : new Map();
+  const ingredientCodeMap = needsCsvIngredient ? await loadIngredientCodeMap() : new Map();
+
+  const finalItems: SearchItem[] = drugs.map((item: (typeof drugs)[number]) => {
+    const standardCode = (item.standardCode || '').trim();
+    const insuranceCode = (item.insuranceCode || '').trim();
+    const csvLookupCodes = buildCsvLookupCodes(standardCode, insuranceCode);
+    const csvData = csvLookupCodes.map((code) => csvPriceMap.get(code)).find(Boolean);
+
+    let p = (item.priceLabel || '').trim().replace(/,/g, '');
+    const c = (item.reimbursement || '').trim() || '급여구분미확인';
+    if ((!p || p === '가격정보없음' || !/[0-9]/.test(p)) && csvData?.price) {
+      p = String(csvData.price).trim().replace(/,/g, '');
+    }
+
+    let finalIngr = (item.ingredientName || '').trim();
+    if (!finalIngr || finalIngr === '-' || looksLikeCode(finalIngr)) {
+      finalIngr = (
+        ingredientCodeMap.get(finalIngr) ||
+        csvData?.ingredient ||
+        ingredientFromProductName(item.productName || '') ||
+        '-'
+      ).trim();
+    }
+
+    if (p && /[0-9]/.test(p) && p !== '가격정보없음') {
+      if (!p.includes('원')) p += '원';
+    } else if (c.includes('비급여')) {
+      // Keep label factual but avoid over-assertive wording.
+      p = '비급여';
+    } else {
+      p = '가격정보없음';
+    }
+
+    const isOriginalCompany = !!(item.company && originalMakers.some(m => item.company?.includes(m)));
+    const isOriginalName = originalNames.some(m => item.productName.includes(m));
+    const brandClass: SearchItem['brandClass'] = (isOriginalCompany || isOriginalName) ? '오리지널(대장약)' : '복제약(제네릭)';
+
+    const productNameFromDb = (item.productName || '').trim();
+    const finalProductName =
+      (looksLikeMojibake(productNameFromDb) && (csvData?.productName || '').trim())
+        ? String(csvData?.productName).trim()
+        : (productNameFromDb || '-');
+
+    return {
+      id: item.standardCode || item.id,
+      productName: finalProductName,
+      ingredientName: finalIngr,
+      company: item.company || '-',
+      priceLabel:
+        p === '가격정보없음'
+          ? '가격정보없음 / ' + c
+          : p === '비급여'
+            ? p
+            : p + ' / ' + c,
+      reimbursement: c,
+      insuranceCode: item.insuranceCode || item.standardCode || '-',
+      standardCode: item.standardCode || '-',
+      atcCode: item.atcCode || '-',
+      type: item.type || '-',
+      releaseDate: item.releaseDate || '-',
+      usageFrequency: item.usageFrequency || 0,
+      brandClass,
+      sourceService: csvData?.price || csvData?.ingredient ? '자체DB+CSV 보강 조회' : '자체DB 초고속 조회'
+    };
+  });
+
+  // Propagate known prices to variants sharing the same base product name.
+  const knownPriceByBaseName = new Map<string, string>();
+  for (const item of finalItems) {
+    if (/[0-9]/.test(item.priceLabel) && !item.priceLabel.startsWith('가격정보없음')) {
+      const baseName = normalizeBaseProductName(item.productName);
+      if (baseName && !knownPriceByBaseName.has(baseName)) {
+        const numericPrice = item.priceLabel.split('/')[0].trim();
+        knownPriceByBaseName.set(baseName, numericPrice);
+      }
+    }
+  }
+
+  const normalizedItems = finalItems.map((item) => {
+    if (!item.priceLabel.startsWith('가격정보없음')) return item;
+
+    const baseName = normalizeBaseProductName(item.productName);
+    const inferredPrice = knownPriceByBaseName.get(baseName);
+    if (!inferredPrice) return item;
+
+    return {
+      ...item,
+      priceLabel: `${inferredPrice} / ${item.reimbursement}`,
+    };
+  });
+
+  // 기본은 제품명+제조사 기준 중복 제거. 성분 검색은 코드 variant를 보존해 폭넓게 노출.
+  const preserveVariantsForIngredientSearch = isIngredientFocusedQuery;
+  const dedupMap = new Map<string, SearchItem>();
+  for (const item of normalizedItems) {
+    const key = preserveVariantsForIngredientSearch
+      ? `${item.productName}__${item.company}__${item.standardCode || item.id}`
+      : `${item.productName}__${item.company}`;
+    const prev = dedupMap.get(key);
+    if (!prev || item.usageFrequency > prev.usageFrequency) {
+      dedupMap.set(key, item);
+    }
+  }
+
+  let dedupedItems = Array.from(dedupMap.values());
+
+  // 정렬 우선순위: 오리지널/복제약 구분 -> 처방빈도 desc -> 제품명 asc
+  dedupedItems.sort((a: SearchItem, b: SearchItem) => {
+    const classRank = (v: SearchItem['brandClass']) => (v === '오리지널(대장약)' ? 0 : 1);
+    const classDiff = classRank(a.brandClass) - classRank(b.brandClass);
+    if (classDiff !== 0) return classDiff;
+
+    const freqDiff = b.usageFrequency - a.usageFrequency;
+    if (freqDiff !== 0) return freqDiff;
+
+    return a.productName.localeCompare(b.productName, 'ko');
+  });
+
+  if (isIngredientFocusedQuery) {
+    const keywordTokens = splitSearchTokens(ingredientKeywordCandidate);
+    const textMatched = dedupedItems.filter((item) => {
+      const haystack = normalizeSearchText(`${item.productName} ${item.ingredientName}`);
+      return keywordTokens.some((token) => haystack.includes(token));
+    });
+    const atcMatched = ingredientHints.length > 0
+      ? dedupedItems.filter((item) => ingredientHints.some((prefix) => (item.atcCode || '').toUpperCase().startsWith(prefix.toUpperCase())))
+      : [];
+
+    if (atcMatched.length > 0 || textMatched.length > 0) {
+      const preferred = [...textMatched, ...atcMatched];
+      const uniq = new Map<string, SearchItem>();
+      for (const item of preferred) {
+        const key = preserveVariantsForIngredientSearch
+          ? `${item.productName}__${item.company}__${item.standardCode || item.id}`
+          : `${item.productName}__${item.company}`;
+        if (!uniq.has(key)) uniq.set(key, item);
+      }
+      dedupedItems = Array.from(uniq.values());
+    }
+  }
+
+  return {
+    success: true,
+    count: dedupedItems.length,
+    items: dedupedItems,
+    fallbackUsed: usedDefaultFallback,
+  };
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json()) as QueryPayload;
+    const cacheKey = makeCacheKey(body);
+    const cached = searchCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return NextResponse.json(cached.data);
+    }
+
+    const result = await runSearch(body);
+    searchCache.set(cacheKey, {
+      expiresAt: Date.now() + SEARCH_CACHE_TTL_MS,
+      data: result,
+    });
+
+    return NextResponse.json(result);
   } catch (err) {
     const error = err as Error;
     console.error('Database Search Error:', error);

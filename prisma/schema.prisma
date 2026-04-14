@@ -211,5 +211,8 @@ model Drug {
   @@index([productName])
   @@index([ingredientName])
   @@index([company])
+  @@index([insuranceCode])
+  @@index([atcCode])
+  @@index([usageFrequency])
 }
 
