@@ -1,0 +1,1 @@
+import { POST } from "../src/app/api/drugs/search/route"; (async () => { const req = new Request("http://localhost/api/drugs/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ productName: "≈∏¿Ã∑π≥Ó" }) }); const res = await POST(req); const txt = await res.text(); console.log(txt); })();

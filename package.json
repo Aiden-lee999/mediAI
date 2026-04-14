@@ -6,22 +6,29 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "sync:batch": "npx --yes tsx scripts/run_sync_batch.ts",
+    "sync:msup-report": "npx --yes tsx scripts/generate_msup_escalation_report.ts --write-md=true"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
     "@tanstack/react-query": "^5.95.2",
     "@tanstack/react-query-devtools": "^5.95.2",
-    "axios": "^1.13.6",
+    "axios": "^1.14.0",
+    "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.38.0",
+    "iconv-lite": "^0.6.3",
     "lucide-react": "^1.0.1",
     "next": "16.2.1",
     "openai": "^6.32.0",
+    "pg": "^8.20.0",
+    "qrcode.react": "^4.2.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-markdown": "^10.1.0",
+    "react-signature-canvas": "^1.1.0-alpha.2",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.5.0",
     "zustand": "^5.0.12"
@@ -36,5 +43,24 @@
     "prisma": "^6.19.2",
     "tailwindcss": "^4",
     "typescript": "^5"
-  }
+  },
+  "description": "This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).",
+  "main": "fetch_api.js",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Aiden-lee999/mediAI.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Aiden-lee999/mediAI/issues"
+  },
+  "homepage": "https://github.com/Aiden-lee999/mediAI#readme"
 }

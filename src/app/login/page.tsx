@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
@@ -16,7 +16,6 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      // In commercial build, this communicates with the Express/NestJS backend
       const res = await fetch('/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -24,8 +23,7 @@ export default function LoginPage() {
       });
 
       if (!res.ok) {
-        // Fallback for development if backend isn't up
-        console.warn('Backend connection failed, using dev mock login');
+        console.warn('Backend connection failed, using dev mock login');        
         localStorage.setItem('med_token', 'dev_mock_jwt_token_expert');
         localStorage.setItem('med_user', JSON.stringify({ name, specialty, role: 'doctor' }));
         router.push('/dashboard');
@@ -38,7 +36,6 @@ export default function LoginPage() {
       router.push('/dashboard');
     } catch (err) {
       console.error('Login error:', err);
-      // Fallback
       localStorage.setItem('med_token', 'dev_mock_jwt_token_expert');
       localStorage.setItem('med_user', JSON.stringify({ name, specialty, role: 'doctor' }));
       router.push('/dashboard');
@@ -63,8 +60,8 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="space-y-5">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">의사 면허 번호</label>
-            <input 
-              type="text" 
+            <input
+              type="text"
               className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               placeholder="면허 번호 5자리"
               value={license}
@@ -75,10 +72,10 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">비밀번호</label>
-            <input 
-              type="password" 
+            <input
+              type="password"
               className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-              placeholder="????????"
+              placeholder="비밀번호 입력"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -88,8 +85,8 @@ export default function LoginPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">성함</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 placeholder="홍길동"
                 value={name}
@@ -98,7 +95,7 @@ export default function LoginPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">진료과목</label>
-              <select 
+              <select
                 className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
                 value={specialty}
                 onChange={(e) => setSpecialty(e.target.value)}
@@ -111,17 +108,17 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={isLoading}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors shadow-md shadow-blue-200 mt-4"
           >
             {isLoading ? '인증 중...' : '보안 로그인'}
           </button>
         </form>
-        
+
         <div className="mt-8 text-center text-xs text-slate-400">
-          <p>ⓒ 2026 AIMDNET. All rights reserved.</p>
+          <p> 2026 AIMDNET. All rights reserved.</p>
           <p className="mt-1">의사협회 SSO 연동 지원 (SSO 준비중)</p>
         </div>
       </div>

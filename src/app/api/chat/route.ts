@@ -54,7 +54,7 @@ export async function POST(req: Request) {
 
       const messagesForOpenAI: any[] = [
         { role: 'system', content: '당신은 전문 의사들을 위한 임상 지식 보조 AI인 mediAI입니다. 답변은 철저히 의학적이고 전문적인 어조로, 신뢰할 수 있는 출처를 기반으로 작성해야 합니다.' },
-        ...history.map(m => ({
+        ...history.map((m: any) => ({
           role: m.role.toLowerCase() === 'user' ? 'user' : 'assistant',
           content: m.content
         }))

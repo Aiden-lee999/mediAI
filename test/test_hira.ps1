@@ -1,0 +1,6 @@
+
+$key = "a73d6c98ef59e73ed780ffb961f298b1cc9fecb40ad0fd0ffab923a67a02027d"
+$url = "https://apis.data.go.kr/B551182/msupUserInfoService1.2/getCmpnAreaList1.2?serviceKey=$key&numOfRows=1&pageNo=1&mdcinCmpnGnrlNm=$([uri]::EscapeDataString('아세트아미노펜'))"
+$res = Invoke-RestMethod -Uri $url -Method Get
+Write-Output $res.response.body.items.item | ConvertTo-Json
+

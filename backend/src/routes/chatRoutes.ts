@@ -1,109 +1,100 @@
-﻿import express from 'express';
+import express from 'express';
 import OpenAI from 'openai';
+import { PrismaClient } from '@prisma/client';
+import { fetchDrugInfo } from '../../../src/lib/drugApiClient';
 
 const router = express.Router();
-
-// 환경변수에 OPENAI_API_KEY가 등록되어 있다고 가정합니다. (또는 이전 키를 여기에 직접 입력)
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'YOUR_OPENAI_API_KEY', // <-- 필요 시 발급받으신 키로 하드코딩 교체 가능
+  apiKey: process.env.OPENAI_API_KEY || 'YOUR_KEY',
 });
 
-// 원장님이 요청하신 "실무 추천 모델 라우팅" 로직
 function determineModel(question: string, hasImage: boolean) {
-  // 3. 복잡한 멀티모달 추론, 아주 어려운 일부 요청  gpt-5.4-pro
-  if (hasImage) {
-    return 'gpt-5.4-pro'; 
-  }
-  
-  // 1. 짧은 질문 / 간단 분류 / 일반 OCR  gpt-5.4-mini
-  // (질문이 50자 이하인 경우 간단한 질문으로 간주)
-  if (!question || question.length < 50) {
-    return 'gpt-5.4-mini';
-  }
-  
-  // 2. 긴 문맥 / 분석 / 정확도 중요한 답변  gpt-5.4
-  return 'gpt-5.4';
+  if (hasImage) return 'gpt-4o';
+  if (!question || question.length < 10) return 'gpt-4o-mini';
+  return 'gpt-4o';
 }
 
 router.post('/ask', async (req, res) => {
-  const { question, history, imageBase64 } = req.body;
-  
-  // 요청하신 "가장 먼저 고쳐야 할 모델 연동 및 라우팅 로직" 적용
-  const modelToUse = determineModel(question || '', !!imageBase64);
-
   try {
-    const messages: any[] = [];
+    const { question, history, imageBase64 } = req.body;
+    let modelToUse = determineModel(question || '', !!imageBase64);
+    modelToUse = modelToUse.replace('gpt-5.4-pro', 'gpt-4o').replace('gpt-5.4-mini', 'gpt-4o-mini').replace('gpt-5.4', 'gpt-4o');
     
-    // 프론트엔드 UI를 100% 동작시키기 위한 시스템 프롬프트 (JSON 강제)
+    let drugContext = "";
+    if (question && (question.includes("약") || question.includes("알려줘") || question.includes("타이레놀") || question.includes("부작용") || question.includes("가격"))) {
+       const rawObj = await fetchDrugInfo(question);
+       if (rawObj) {
+         drugContext = `
+[실시간 API 연동된 정보] 
+반드시 다음 정보를 기반으로 응답의 "3. 대체약물 리스트"와 "4. 5. 블록"의 약가/이미지를 참고하여 작성하세요. 가격을 절대로 임의로 지어내지(hallucinate) 마십시오!
+- 약품명: ${rawObj.name}
+- 대표이미지: ${rawObj.imageUrl} 
+- ${rawObj.mfdsData}
+- ${rawObj.hiraData}
+(참고: 응답 JSON 생성 시, ${rawObj.name}에 해당하는 데이터가 필요하면 가격으로 '${rawObj.priceInfo}'를, 이미지 URL로 '${rawObj.imageUrl}'를 있는 그대로 사용하십시오!)
+`;
+       }
+    }
+
+    const messages: any[] = [];
     messages.push({
       role: 'system',
-      content: `당신은 뛰어난 전문 의학 어시스턴트입니다. 
-반드시 아래의 JSON 포맷으로만 응답해주세요. 프론트엔드의 블록 UI를 렌더링하기 위한 필수 규격입니다:
+      content: `당신은 매일 수많은 환자를 진료하는 의사를 돕는 최고 수준의 전문 의학 어시스턴트입니다.
 
-{
-  "intent_type": "general|disease|drug|image|recruit|translation",
-  "orchestration_summary": "수행한 AI 인텔리전스 작업 (예: X-ray 판독 및 전문의 소견 종합)",
-  "chat_reply": "사용자에게 건넬 친절한 일반 텍스트 답변",
-  "blocks": [
-    {
-      "block_type": "textbook|journal|md_tip|doctor_consensus|doctor_opinion|insurance_warning|expert_warning|image_read|sponsor_card|recruit_cards|drug_cards|translation",
-      "title": "화면에 표시될 블록의 제목",
-      "body": "블록의 내용 (HTML 태그 허용 안됨, 일반 텍스트)",
-      "meta_json": {}, // 특수 블록용 (예: drug_cards의 drugs 배열, doctor_opinion의 opinions 배열 등)
-      "sort_order": 1
-    }
-  ]
-}
+**[매우 중요한 어투 및 포맷 규칙]**
+당신의 응답은 엄격한 JSON이나 정해진 카드 형태가 아닌, 선생님(의사)과 대화하듯이 매우 자연스럽고 매끄러운 구어체 마크다운(Markdown)으로 작성해야 합니다.
+1. 기계적인 표나 개조식 나열부터 시작하지 마시고, 첫인사는 "네, 선생님. 문의하신 약물에 대해 확인해보았습니다."와 같이 부드럽고 자연스럽게 시작해주세요.
+2. 약물의 기전이나 설명은 선생님(의사)에게 직접 구두로 브리핑하듯 서술하세요. (예: "선생님, 이 약물의 주요 작용 기전은...")
+3. **[유일한 예외]** 10개 이상의 약물 대체 옵션 리스트나, 부작용 비교 등 여러 약물의 속성을 한눈에 비교해야 하는 정보는 **반드시 마크다운 테이블(표) 형태를 적극 활용**해서 보기 좋게 정리해주세요. (표의 컬럼 예: 약물명 | 성분명 | 가격 | 제조사 등)
+4. JSON 포맷은 절대 출력하지 마세요.
 
-- 보험 삭감 경고가 필요하면 'insurance_warning', 약물 추천시 'drug_cards', 처방 팁은 'md_tip' 블록을 적극 활용하세요.
-- 번역 요청인 경우 'translation' 블록을 사용하고 meta_json.clinical_note에 복약주의사항을 넣으세요.
-`
+${drugContext}`
     });
 
-    // 과거 대화 컨텍스트 주입
-    if (history && Array.isArray(history)) {
-      history.forEach((h: any) => {
-         // 이전 대화 텍스트만 유지 (토큰 절약 및 에러 방지)
-         if(h.content && typeof h.content === 'string') {
-            messages.push({ role: h.role, content: h.content });
-         }
+        if (history && Array.isArray(history)) {
+      const pastHistory = history.length > 0 ? history.slice(0, -1) : [];
+      pastHistory.forEach((msg: any) => {
+        let msgContent = msg.content;
+        if (msg.role === "assistant" && msg.parsedData) {
+          msgContent = typeof msg.parsedData === "string" ? msg.parsedData : (msg.parsedData.chat_reply || "AI 응답 요약");
+        }
+        if (msgContent) {
+          messages.push({
+            role: msg.role === "user" ? "user" : "assistant",
+            content: typeof msgContent === "string" ? msgContent : JSON.stringify(msgContent)
+          });
+        }
       });
     }
 
-    // 현재 사용자 입력 처리 (멀티모달 포함)
+    const userMessage: any = { role: "user", content: [] };
+    if (question) {
+      userMessage.content.push({ type: "text", text: question });
+    }
     if (imageBase64) {
-       messages.push({
-          role: 'user',
-          content: [
-             { type: 'text', text: question || '이 이미지를 의학적으로 분석해주세요.' },
-             { type: 'image_url', image_url: { url: imageBase64 } }
-          ]
-       });
-    } else {
-       messages.push({ role: 'user', content: question });
+      userMessage.content.push({
+        type: "image_url",
+        image_url: { url: imageBase64.startsWith("data:") ? imageBase64 : "data:image/jpeg;base64," + imageBase64 }
+      });
+    }
+    if (userMessage.content.length > 0) {
+      messages.push(userMessage);
     }
 
-    // 원장님 요청 사항: OpenAI API 실제 연동
-    const completion = await openai.chat.completions.create({
+    const response = await openai.chat.completions.create({
       model: modelToUse,
       messages: messages,
-      response_format: { type: "json_object" } // JSON 포맷 강제
+      stream: true,
+      temperature: 0.2,
     });
 
-    const replyContent = completion.choices[0].message.content;
-    const parsedResponse = JSON.parse(replyContent || '{}');
+    const reply = response.choices[0].message.content || "{}";
+    const parsed = JSON.parse(reply);
 
-    // 프론트엔드로 실데이터 발송
-    res.json(parsedResponse);
-
+    res.json(parsed);
   } catch (error: any) {
-    console.error("OpenAI API 연동 오류:", error.message || error);
-    res.json({
-      intent_type: 'general',
-      orchestration_summary: '시스템 안내',
-      chat_reply: '현재 인공지능 서버가 원활하지 않습니다.',
-      blocks: []
-    });
+    console.error("OpenAI Route Error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 

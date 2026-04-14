@@ -1,0 +1,1 @@
+import fs from 'fs'; import iconv from 'iconv-lite'; const raw = fs.readFileSync('data/drug_master_codes.csv'); const text = iconv.decode(raw, 'euc-kr'); console.log(text.split('\n')[87865] || 'not found');
