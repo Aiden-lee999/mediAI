@@ -32,13 +32,24 @@ export async function POST(req: Request) {
       "block_type": "textbook|journal|md_tip|doctor_consensus|doctor_opinion|insurance_warning|expert_warning|image_read|sponsor_card|recruit_cards|drug_cards|translation",
       "title": "화면에 표시될 블록의 제목",
       "body": "블록의 내용 (HTML 태그 허용 안됨, 일반 텍스트)",
-      "meta_json": {}, 
+      "meta_json": {
+        "drugs": [
+          {
+            "name": "약품명",
+            "ingredient": "성분명",
+            "price": "약가 및 등재구분",
+            "class": "분류",
+            "company": "제약사명"
+          }
+        ]
+      },
       "sort_order": 1
     }
   ]
 }
 - 보험 삭감 경고가 필요하면 'insurance_warning', 약물 추천시 'drug_cards', 처방 팁은 'md_tip' 블록을 적극 활용하세요.
 - 번역 요청인 경우 'translation' 블록을 사용하고 meta_json.clinical_note에 복약 주의사항을 넣으세요.
+- drug_cards 블록 생성 시 반드시 배열 내 각 객체는 name, ingredient, price, class, company 속성을 포함해야 하며, 중복되는 약물 정보가 없도록 제외하여 응답하세요.
 `
     });
 

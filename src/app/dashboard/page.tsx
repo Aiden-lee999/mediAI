@@ -6,7 +6,22 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 // 1. 하위 컴포넌트: 인터랙티브 약물 정렬 테이블
 // ==========================================
 function SortableDrugTable({ initialDrugs }: { initialDrugs: any[] }) {
-  const [drugs, setDrugs] = useState([...initialDrugs]);
+  const uniqueDrugs = useMemo(() => {
+    if (!initialDrugs) return [];
+    
+    const seen = new Set();
+    return initialDrugs.filter((drug: any) => {
+      const id = drug.name || drug.id || JSON.stringify(drug);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    }).map((d:any) => ({
+       ...d,
+       price: d.price || d.insurance_price || d.금액 || d.약가 || '정보없음'
+    }));
+  }, [initialDrugs]);
+
+  const [drugs, setDrugs] = useState([...uniqueDrugs]);    
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [isAsc, setIsAsc] = useState(true);
 
