@@ -1,6 +1,13 @@
 ﻿'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
+import DrugSearch from '@/components/dashboard/DrugSearch';
+import PrescribeGuide from '@/components/dashboard/PrescribeGuide';
+import RAGReview from '@/components/dashboard/RAGReview';
+import Emergency from '@/components/dashboard/Emergency';
+import LegalReview from '@/components/dashboard/LegalReview';
+import TranslateMCA from '@/components/dashboard/TranslateMCA';
+import SettingsMyPage from '@/components/dashboard/SettingsMyPage';
 
 // ==========================================
 // 1. 하위 컴포넌트: 인터랙티브 약물 정렬 테이블
@@ -67,13 +74,13 @@ function SortableDrugTable({ initialDrugs }: { initialDrugs: any[] }) {
 // 2. 메인 대시보드 페이지
 // ==========================================
 export default function DashboardPage() {
-  const [view, setView] = useState<'chat' | 'translate' | 'library' | 'rag_review'>('chat');
+  const [view, setView] = useState<string>('chat');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isOpinionModalOpen, setOpinionModalOpen] = useState(false);
   const [opinionText, setOpinionText] = useState('');
 
   // 유저 컨텍스트
-  const [user, setUser] = useState({ name: '김원장', specialty: '내과' });
+  const [user, setUser] = useState({ name: '김의사', specialty: '내과' });
 
   // 채팅 상태
   const [chatInput, setChatInput] = useState('');
@@ -376,28 +383,35 @@ export default function DashboardPage() {
         </div>
         
         <button onClick={handleCreateNewChat} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg mb-6 flex items-center justify-center gap-2">
-           <span className="text-lg">+</span> 새로운 분석
+           <span className="text-lg">+</span> 새 채팅
         </button>
 
-        <div className="flex flex-col gap-2 mb-8 text-sm text-slate-300">
-           <button onClick={() => {setView('chat'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='chat'?'bg-slate-800 text-white':''}`}>
-               전문가 어시스턴트
+        <div className="flex flex-col gap-2 mb-8 text-sm font-medium text-slate-300">
+           <button onClick={() => {setView('drug'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='drug'?'bg-slate-800 text-white':''}`}>
+              약제조회
            </button>
-           <button onClick={() => {setView('translate'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='translate'?'bg-slate-800 text-white':''}`}>
-               진료실 다국어 번역
+           <button onClick={() => {setView('guide'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='guide'?'bg-slate-800 text-white':''}`}>
+              처방 가이드
+           </button>
+           <button onClick={() => {setView('case'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='case'?'bg-slate-800 text-white':''}`}>
+              증례 검색
            </button>
            <button onClick={() => {setView('rag_review'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='rag_review'?'bg-slate-800 text-white':''}`}>
-               RAG 및 리뷰 워크플로우 (신규)
+              RAG 및 리뷰 워크플로우 🌟
            </button>
-           <button onClick={() => {setView('library'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='library'?'bg-slate-800 text-white':''}`}>
-               내 라이브러리
+           <button onClick={() => {setView('emergency'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='emergency'?'bg-slate-800 text-white':''}`}>
+              응급의료
            </button>
-           <button onClick={() => window.location.href = '/mypage'} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 text-blue-300 mt-4 border border-slate-700`}>
+           <button onClick={() => {setView('legal'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='legal'?'bg-slate-800 text-white':''}`}>
+              법률검토 (판례중심)
+           </button>
+           <button onClick={() => {setView('translate'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='translate'?'bg-slate-800 text-white':''}`}>
+              다국어 진료 어시스턴트 MCA
+           </button>
+           <button onClick={() => setView('settings')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 text-blue-300 mt-4 border border-slate-700`}>
                👤 마이페이지 및 설정
            </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
+        </div>        <div className="flex-1 overflow-y-auto">
            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">최근 기록</h3>
            <div className="flex flex-col gap-1">
              {sessions.slice(0,10).map((s, idx) => (
@@ -443,7 +457,7 @@ export default function DashboardPage() {
                   <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
                     <span className="text-3xl"></span>
                   </div>
-                  <h2 className="text-2xl font-bold text-slate-800 mb-2">무엇을 도와드릴까요?</h2>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">무엇을 도와드릴까요, {user.name} 원장님?</h2>
                   <p className="text-slate-500 text-sm mb-8">환자 증상, X-Ray 사진 판독, 약물 상호작용(DDI), 최신 가이드라인 검색, 초빙 공고 비교 등 전공별 맞춤 정보를 지원합니다.</p>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
@@ -513,196 +527,15 @@ export default function DashboardPage() {
             </>
           )}
 
-          {/* ===================== TRANSLATE VIEW (app.js 완벽 포팅) ===================== */}
-          {view === 'translate' && (
-            <div className="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-sm border border-slate-200 mt-4">
-               <h2 className="text-xl font-bold mb-4 text-slate-800">진료실 다국어 특화 번역</h2>
-               <p className="text-sm text-slate-500 mb-6">환자 복약지도, 소견서, 진단서 등에 사용되는 의학적 뉘앙스를 엄격하게 유지하여 번역합니다.</p>
-               
-               <div className="mb-4">
-                 <label className="block text-sm font-bold text-slate-700 mb-2">원문 입력 (의학 용어 포함)</label>
-                 <textarea 
-                    className="w-full border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px] resize-y" 
-                    placeholder="예: 해당 약제는 위장장애가 있을 수 있으니 식후 30분에 충분한 물과 함께 복용하세요."
-                    value={transInput}
-                    onChange={(e) => setTransInput(e.target.value)}
-                 />
-               </div>
-
-               <div className="flex gap-4 mb-6 items-end">
-                 <div className="flex-1">
-                   <label className="block text-sm font-bold text-slate-700 mb-2">번역 대상 언어</label>
-                   <select className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" value={transLang} onChange={(e) => setTransLang(e.target.value)}>
-                      <option value="영어">미국 영어 (US English)</option>
-                      <option value="중국어">중국어 (Chinese)</option>
-                      <option value="일본어">일본어 (Japanese)</option>
-                      <option value="러시아어">러시아어 (Russian)</option>
-                      <option value="베트남어">러시아어 (Vietnamese)</option>
-                      <option value="몽골어">몽골어 (Mongolian)</option>
-                   </select>
-                 </div>
-                 <button onClick={handleTranslate} className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-lg text-sm shadow-md transition whitespace-nowrap h-[42px]">
-                   번역 실행
-                 </button>
-               </div>
-
-               {transOutput && (
-                 <div className="border-t border-slate-200 pt-6 mt-2">
-                   <label className="block text-sm font-bold text-slate-700 mb-2">번역 결과 (클릭하여 복사 가능)</label>
-                   <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 text-indigo-900 text-sm whitespace-pre-wrap cursor-pointer" onClick={() => alert('복사되었습니다.')}>
-                     {transOutput}
-                   </div>
-                   {transNote && (
-                     <div className="mt-3 bg-red-50 text-red-700 text-xs p-3 rounded border border-red-200">
-                       <strong> 임상 주의사항:</strong> {transNote}
-                     </div>
-                   )}
-                 </div>
-               )}
-            </div>
-          )}
-
-          {/* ===================== LIBRARY VIEW (app.js 완벽 포팅) ===================== */}
-          {view === 'library' && (
-            <div className="max-w-3xl mx-auto">
-              <h2 className="text-xl font-bold mb-6 text-slate-800">저장된 임상 레퍼런스</h2>
-              {savedLibrary.length === 0 ? (
-                 <div className="text-center py-20 text-slate-400">아직 저장된 항목이 없습니다.</div>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {savedLibrary.map((item, i) => (
-                    <div key={i} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition">
-                      <div className="text-sm font-bold text-blue-700 mb-2 truncate">"{item.query}"</div>
-                      <div className="text-xs text-slate-400 mb-3"> {item.date} 저장됨</div>
-                      <div className="text-sm text-slate-600 line-clamp-4">{item.summary}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ===================== RAG & REVIEW WORKFLOW ===================== */}
-          {view === 'rag_review' && (
-            <div className="max-w-3xl mx-auto bg-white p-6 rounded-xl shadow-sm border border-blue-200 mt-4">
-              <h2 className="text-xl font-bold mb-4 text-blue-800">RAG 검색 및 Peer Review 대시보드</h2>
-              <p className="text-sm text-slate-500 mb-6">최근 개발된 RAG(검색 증강 생성) API와 Review Workflow 기능을 테스트할 수 있는 공간입니다.</p>
-
-              <div className="mb-4">
-                <label className="block text-sm font-bold text-slate-700 mb-2">논문/임상 가이드라인 RAG 질의</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    className="flex-1 border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="예: 최신 당뇨병 1차 치료제 가이드라인 RAG 검색"
-                    id="rag-query-input"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const val = (e.target as HTMLInputElement).value;
-                        if(val) window.dispatchEvent(new CustomEvent('execute-rag', { detail: val }));
-                      }
-                    }}
-                  />
-                  <button 
-                    onClick={() => {
-                      const input = document.getElementById('rag-query-input') as HTMLInputElement;
-                      if(input.value) window.dispatchEvent(new CustomEvent('execute-rag', { detail: input.value }));
-                    }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 rounded-lg text-sm transition"
-                  >
-                    RAG 검색
-                  </button>
-                </div>
-              </div>
-
-              <div id="rag-results-container" className="mt-6 mb-8 hidden">
-                <h3 className="font-bold text-slate-700 text-sm mb-3 border-b pb-2">RAG 검색 결과 및 자동 리뷰 요청</h3>
-                <div id="rag-output" className="bg-slate-50 p-4 rounded-lg text-sm text-slate-700 whitespace-pre-wrap border border-slate-200 mb-3"></div>
-                <div id="rag-sources" className="flex flex-col gap-2"></div>
-              </div>
-
-              <div className="border-t border-slate-200 pt-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-slate-700 text-sm">대기 중인 Workflow 리뷰 (전문의 검토)</h3>
-                  <button onClick={() => window.dispatchEvent(new CustomEvent('load-reviews'))} className="text-xs text-blue-600 hover:underline">새로고침</button>
-                </div>
-                <div id="review-list-container" className="grid gap-3">
-                   <div className="text-center text-xs text-slate-400 py-4">새로고침을 눌러 리뷰 목록을 불러오세요.</div>
-                </div>
-              </div>
-
-              {/* 임시 RAG 및 리뷰 스크립트 */}
-              <script dangerouslySetInnerHTML={{
-                __html: `
-                  window.addEventListener('execute-rag', async (e) => {
-                    const query = e.detail;
-                    const container = document.getElementById('rag-results-container');
-                    const output = document.getElementById('rag-output');
-                    const sources = document.getElementById('rag-sources');
-                    
-                    container.classList.remove('hidden');
-                    output.innerText = 'RAG 데이터베이스를 검색 중입니다... (Prisma / API 연동)';
-                    sources.innerHTML = '';
-                    
-                    try {
-                      const res = await fetch('/api/rag', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ query, sessionId: 'session_' + Date.now() })
-                      });
-                      const data = await res.json();
-                      
-                      output.innerText = data.answer || '답변을 생성하지 못했습니다.';
-                      
-                      if(data.sources && data.sources.length > 0) {
-                         sources.innerHTML = data.sources.map(s => 
-                           '<div class="bg-blue-50 border border-blue-100 p-3 rounded text-xs">' +
-                           '<strong class="text-blue-800">' + s.title + '</strong><br/>' +
-                           '<span class="text-blue-600">' + s.snippet + '</span></div>'
-                         ).join('');
-                      } else {
-                         sources.innerHTML = '<div class="text-xs text-slate-400">참고 문헌이 없습니다.</div>';
-                      }
-                      
-                      // 리뷰 목록 자동 새로고침
-                      setTimeout(() => window.dispatchEvent(new CustomEvent('load-reviews')), 1000);
-                      
-                    } catch (err) {
-                      output.innerText = 'RAG 서버 연동 오류: ' + err.message;
-                    }
-                  });
-
-                  window.addEventListener('load-reviews', async () => {
-                     const container = document.getElementById('review-list-container');
-                     container.innerHTML = '<div class="text-center text-xs text-slate-400">로딩 중...</div>';
-                     try {
-                        const res = await fetch('/api/reviews');
-                        const data = await res.json();
-                        
-                        if(!data || data.length === 0) {
-                           container.innerHTML = '<div class="text-center text-xs text-slate-400">대기 중인 리뷰가 없습니다.</div>';
-                           return;
-                        }
-                        
-                        container.innerHTML = data.map(r => 
-                          '<div class="bg-white border ' + (r.status === 'PENDING' ? 'border-amber-300' : 'border-slate-200') + ' p-3 rounded-lg flex justify-between items-center shadow-sm">' +
-                             '<div>' +
-                                '<span class="text-xs font-bold ' + (r.status === 'PENDING' ? 'text-amber-600' : 'text-slate-600') + '">[' + r.status + ']</span>' +
-                                '<span class="text-sm font-medium ml-2 text-slate-800">Workflow ID: ' + r.id + '</span>' +
-                                '<div class="text-xs text-slate-500 mt-1">버전: ' + r.version + '</div>' +
-                             '</div>' +
-                             '<button onclick="alert(\\\'전문의 리뷰가 승인되었습니다.\\\')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-xs rounded border border-slate-300 font-medium">검토 완료하기</button>' +
-                          '</div>'
-                        ).join('');
-                        
-                     } catch(err) {
-                        container.innerHTML = '<div class="text-center text-xs text-red-400">리뷰 데이터를 불러오지 못했습니다.</div>';
-                     }
-                  });
-                `
-              }} />
-            </div>
-          )}
+          {/* ===================== NEW VIEWS ===================== */}
+          {view === 'rag_review' && <RAGReview />}
+          {view === 'drug' && <DrugSearch />}
+          {view === 'guide' && <PrescribeGuide />}
+          {view === 'case' && <PrescribeGuide />}
+          {view === 'emergency' && <Emergency />}
+          {view === 'legal' && <LegalReview />}
+          {view === 'translate' && <TranslateMCA />}
+          {view === 'settings' && <SettingsMyPage />}
 
         </main>
 

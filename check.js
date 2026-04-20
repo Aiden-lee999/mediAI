@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); async function main() { console.log('Total:', await prisma.drug.count()); console.log('Efficacy:', await prisma.drug.count({where:{efficacy:{not:null}}})); console.log('Price:', await prisma.drug.count({where:{priceLabel:{not:null}}})); } main();
