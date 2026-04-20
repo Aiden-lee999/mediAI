@@ -44,10 +44,10 @@ export default function Emergency() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="w-full mx-auto space-y-6">
       <div className="bg-red-600 text-white p-6 rounded-xl shadow-lg border border-red-700 flex justify-between items-center">
          <div>
-            <h2 className="text-2xl font-extrabold mb-1">🚨 원클릭 응급처치 (ACLS / Anaphylaxis)</h2>
+            <h2 className="text-2xl font-extrabold mb-1"> 원클릭 응급처치 (ACLS / Anaphylaxis)</h2>
             <p className="text-red-100 text-sm">입력된 체중에 맞춰 약물 용량이 즉각 환산되며 타이머가 연동됩니다.</p>
          </div>
          <div className="text-right">
@@ -125,7 +125,7 @@ export default function Emergency() {
             {algorithm === 'Anaphylaxis' && (
                <div className="bg-white p-6 rounded-xl shadow-sm border-2 border-amber-200">
                   <h3 className="font-extrabold text-slate-800 flex items-center gap-2 text-lg mb-6 pb-4 border-b border-amber-100">
-                     <span className="text-amber-500">⚡</span> 아나필락시스 초동 대처
+                     <span className="text-amber-500"></span> 아나필락시스 초동 대처
                   </h3>
 
                   <div className="space-y-4">
@@ -171,7 +171,7 @@ export default function Emergency() {
          {/* 중독 해독제 사전 */}
          <div className="col-span-1 bg-slate-800 rounded-xl p-6 shadow-lg text-slate-50 relative overflow-hidden h-full flex flex-col border border-slate-700">
             <h3 className="font-extrabold text-white flex items-center gap-2 mb-4 border-b border-slate-600 pb-3">
-               <span className="text-indigo-400">🧪</span> 독성학/해독제 (Antidote)
+               <span className="text-indigo-400"></span> 독성학/해독제 (Antidote)
             </h3>
             
             <div className="relative mb-4">

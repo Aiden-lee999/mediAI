@@ -397,7 +397,7 @@ export default function DashboardPage() {
               증례 검색
            </button>
            <button onClick={() => {setView('rag_review'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='rag_review'?'bg-slate-800 text-white':''}`}>
-              RAG 및 리뷰 워크플로우 🌟
+              RAG 및 리뷰 워크플로우 
            </button>
            <button onClick={() => {setView('emergency'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='emergency'?'bg-slate-800 text-white':''}`}>
               응급의료
@@ -409,7 +409,7 @@ export default function DashboardPage() {
               다국어 진료 어시스턴트 MCA
            </button>
            <button onClick={() => setView('settings')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 text-blue-300 mt-4 border border-slate-700`}>
-               👤 마이페이지 및 설정
+                마이페이지 및 설정
            </button>
         </div>        <div className="flex-1 overflow-y-auto">
            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">최근 기록</h3>
@@ -429,7 +429,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 메인 캔버스 */}
-      <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full relative">
+      <div className="flex-1 flex flex-col w-full mx-auto w-full relative">
         <header className="bg-white border-b border-slate-200 p-4 flex justify-between items-center shadow-sm z-30">
           <button className="md:hidden p-2 -ml-2 text-slate-600" onClick={() => setSidebarOpen(true)}> 메뉴</button>
           <div>
@@ -453,7 +453,7 @@ export default function DashboardPage() {
           {view === 'chat' && (
             <>
               {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto pb-20">
+                <div className="h-full flex flex-col items-center justify-center text-center w-full mx-auto pb-20">
                   <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
                     <span className="text-3xl"></span>
                   </div>
@@ -475,7 +475,7 @@ export default function DashboardPage() {
                       <div className={`max-w-[90%] sm:max-w-[85%] rounded-2xl p-4 sm:p-5 shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}`}>
                         {msg.role === 'user' ? (
                           <>
-                            {msg.image && <img src={msg.image} alt="uploaded" className="max-w-xs w-full rounded-lg mb-3 border border-blue-500" />}
+                            {msg.image && <img src={msg.image} alt="uploaded" className="w-full w-full rounded-lg mb-3 border border-blue-500" />}
                             <div className="leading-relaxed text-sm sm:text-base whitespace-pre-wrap">{msg.content}</div>
                           </>
                         ) : (
@@ -593,7 +593,7 @@ export default function DashboardPage() {
       {/* 내부 의사 의견 모달 (app.js openOpinionModal) */}
       {isOpinionModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-           <div className="bg-white w-full max-w-md rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in duration-200">
+           <div className="bg-white w-full w-full rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in duration-200">
               <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
                  <h3 className="font-bold text-slate-800 text-md"> 동료 의견 남기기</h3>
                  <button onClick={() => setOpinionModalOpen(false)} className="text-slate-400 hover:text-slate-600"></button>

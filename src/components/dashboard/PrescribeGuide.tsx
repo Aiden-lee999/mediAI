@@ -48,10 +48,10 @@ export default function PrescribeGuide() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="w-full mx-auto space-y-6">
       {/* 검색 바 */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <h2 className="text-xl font-extrabold text-blue-800 mb-2">📋 처방 가이드 및 증례 매칭</h2>
+        <h2 className="text-xl font-extrabold text-blue-800 mb-2"> 처방 가이드 및 증례 매칭</h2>
         <p className="text-sm text-slate-500 mb-6">"50대 여성, 고혈압 당뇨 복합 환자"처럼 환자의 상태를 입력하면 최신 학회 가이드라인과 실제 처방 증례를 분석해드립니다.</p>
         
         <div className="flex gap-2">
@@ -75,7 +75,7 @@ export default function PrescribeGuide() {
       {response && (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-6">
           <div className="flex items-center gap-2 mb-4 border-b pb-2">
-            <span className="text-indigo-600 text-xl">🤖</span>
+            <span className="text-indigo-600 text-xl"></span>
             <h3 className="font-bold text-lg text-indigo-900">AI 분석 결과 요약</h3>
           </div>
           <p className="text-slate-700 bg-indigo-50 p-4 rounded-lg mb-6 leading-relaxed">
@@ -86,7 +86,7 @@ export default function PrescribeGuide() {
             {response.blocks?.map((block: any, idx: number) => (
               <div key={idx} className="border border-slate-200 rounded-lg p-4 bg-slate-50">
                 <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-2">
-                  {block.block_type === 'insurance_warning' ? '⚠️' : '💡'} {block.title}
+                  {block.block_type === 'insurance_warning' ? '️' : ''} {block.title}
                 </h4>
                 <p className="text-sm text-slate-600 mb-3">{block.body}</p>
                 {block.meta_json?.drugs && (
@@ -109,7 +109,7 @@ export default function PrescribeGuide() {
         <>
           {initialLoading ? (
             <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 text-center animate-pulse">
-              <span className="text-2xl mb-3 block">🤖</span>
+              <span className="text-2xl mb-3 block"></span>
               <p className="text-slate-500 font-medium">최신 학회 가이드라인 및 증량 스케줄을 AI가 실시간으로 분석중입니다...</p>
             </div>
           ) : (
@@ -146,7 +146,7 @@ export default function PrescribeGuide() {
       {!response && !loading && (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-             <span className="text-amber-500">🧑‍⚕️</span> 원장님 환자와 유사한 상위 1% 성공 증례
+             <span className="text-amber-500">‍️</span> 원장님 환자와 유사한 상위 1% 성공 증례
            </h3>
            <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">

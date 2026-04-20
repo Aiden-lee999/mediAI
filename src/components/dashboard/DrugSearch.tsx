@@ -81,9 +81,9 @@ export default function DrugSearch() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="w-full mx-auto space-y-6">
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <h2 className="text-xl font-extrabold text-blue-800 mb-2">💊 스마트 약제조회 및 DUR 보조</h2>
+        <h2 className="text-xl font-extrabold text-blue-800 mb-2"> 스마트 약제조회 및 DUR 보조</h2>
         <p className="text-sm text-slate-500 mb-6">30만 건의 의약품 데이터베이스를 실시간으로 검색하여 급여 기준, 대체 약제, DUR(병용금기) 정보를 제공합니다.</p>
         
         <div className="relative mb-6">
@@ -95,7 +95,7 @@ export default function DrugSearch() {
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
-          <span className="absolute left-4 top-4 w-5 h-5 flex items-center justify-center text-slate-400">🔍</span>
+          <span className="absolute left-4 top-4 w-5 h-5 flex items-center justify-center text-slate-400"></span>
           <button 
             onClick={handleSearch}
             disabled={loading}
@@ -128,7 +128,7 @@ export default function DrugSearch() {
             {activeTab === '검색결과' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                  <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                   <span className="text-blue-500">🔍</span> 검색 결과 {searchResults.length > 0 && `(${searchResults.length}건)`}
+                   <span className="text-blue-500"></span> 검색 결과 {searchResults.length > 0 && `(${searchResults.length}건)`}
                  </h3>
                  
                  {loading ? (
@@ -167,7 +167,7 @@ export default function DrugSearch() {
             {activeTab === '급여조회' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                  <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                   <span className="text-blue-500">📄</span> 심평원 인정 기준 (AI 분석 최신고시요약)
+                   <span className="text-blue-500"></span> 심평원 인정 기준 (AI 분석 최신고시요약)
                  </h3>
                  {!selectedDrug ? (
                     <div className="text-center py-8 text-slate-500">약제를 먼저 검색하고 선택해주세요.</div>
@@ -187,7 +187,7 @@ export default function DrugSearch() {
                        {llmInfo?.blocks?.map((block: any, idx: number) => (
                           block.block_type === 'insurance_warning' || block.block_type === 'expert_warning' || block.block_type === 'textbook' ? (
                              <div key={idx} className="p-4 bg-red-50 rounded-lg border border-red-100 mt-2">
-                                <h4 className="font-bold text-red-800 text-sm mb-1">{block.title || '⚠️ 삭감 및 주의사항'}</h4>
+                                <h4 className="font-bold text-red-800 text-sm mb-1">{block.title || '️ 삭감 및 주의사항'}</h4>
                                 <p className="text-xs text-red-700 whitespace-pre-wrap">{block.body}</p>
                              </div>
                           ) : null
@@ -200,7 +200,7 @@ export default function DrugSearch() {
             {activeTab === '대체약제' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                  <div className="flex justify-between items-center mb-4">
-                   <h3 className="font-bold text-slate-800 flex items-center gap-2"><span className="text-blue-500">🔄</span> 동일 성분 대체 약제 비교</h3>
+                   <h3 className="font-bold text-slate-800 flex items-center gap-2"><span className="text-blue-500"></span> 동일 성분 대체 약제 비교</h3>
                    <span className="text-xs text-slate-500">품절 및 부작용 고려</span>
                  </div>
                  
@@ -235,7 +235,7 @@ export default function DrugSearch() {
               </div>
             )}            {activeTab === 'DUR 점검' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                 <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><span className="text-blue-500">🚨</span> 사전 처방 안전 점검 (DUR)</h3>
+                 <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><span className="text-blue-500"></span> 사전 처방 안전 점검 (DUR)</h3>
                  
                  {!selectedDrug ? (
                    <div className="text-center py-8 text-slate-500">먼저 검색 후 약제를 선택해주세요.</div>
@@ -245,7 +245,7 @@ export default function DrugSearch() {
                    <div className="space-y-4">
                      {durInfo.sections.filter((s:any) => s.total > 0).map((sec: any, sIdx: number) => (
                        <div key={sIdx} className="border border-red-200 bg-red-50 p-4 rounded-xl flex gap-4">
-                          <div className="bg-white p-2 rounded-full h-10 w-10 flex items-center justify-center shadow-sm">⚠️</div>
+                          <div className="bg-white p-2 rounded-full h-10 w-10 flex items-center justify-center shadow-sm">️</div>
                           <div className="flex-1">
                              <div className="font-bold text-red-800 text-sm mb-1">{sec.title} 발견! ({sec.total}건)</div>
                              {sec.items.map((item: any, iIdx: number) => (
@@ -260,7 +260,7 @@ export default function DrugSearch() {
                    </div>
                  ) : (
                    <div className="border border-emerald-200 bg-emerald-50 p-4 rounded-xl flex gap-4">
-                     <div className="bg-white p-2 rounded-full h-10 w-10 flex items-center justify-center shadow-sm text-emerald-500 font-bold">✓</div>
+                     <div className="bg-white p-2 rounded-full h-10 w-10 flex items-center justify-center shadow-sm text-emerald-500 font-bold"></div>
                      <div className="flex items-center">
                         <div className="font-bold text-emerald-800 text-sm">{selectedDrug.productName} 약제에 대해 특별한 DUR 금기/주의사항이 발견되지 않았습니다.</div>
                      </div>
@@ -273,7 +273,7 @@ export default function DrugSearch() {
          {/* Right Sidebar (Mini AI Assistant) */}
          <div className="col-span-1 space-y-6">
             <div className="bg-blue-600 rounded-xl p-5 text-white shadow-md relative overflow-hidden">
-               <div className="absolute right-0 bottom-0 opacity-10 text-6xl transform translate-x-4 translate-y-4">💊</div>
+               <div className="absolute right-0 bottom-0 opacity-10 text-6xl transform translate-x-4 translate-y-4"></div>
                <h3 className="font-bold text-lg mb-2 relative z-10">AI 퀵 검색</h3>
                <p className="text-blue-100 text-xs mb-4 relative z-10">방금 입력한 약제와 연관된 다국어 복약 지도문을 생성할까요?</p>
                <button className="w-full bg-white text-blue-700 font-bold py-2 rounded-lg text-sm shadow-sm hover:bg-blue-50 relative z-10 transition">

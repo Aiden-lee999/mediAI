@@ -12,19 +12,19 @@ export default function RAGReview() {
   const [query, setQuery] = useState('');
 
   return (
-    <div className="max-w-6xl mx-auto flex flex-col md:flex-row gap-6 h-[calc(100vh-150px)]">
+    <div className="w-full mx-auto flex flex-col md:flex-row gap-6 h-[calc(100vh-150px)]">
       
       {/* 좌측: 문서 업로드 및 관리 (RAG 소스) */}
       <div className="w-full md:w-1/3 bg-white p-6 rounded-xl shadow-sm border border-slate-200. flex flex-col">
          <h2 className="text-lg font-extrabold text-indigo-800 mb-2 flex items-center gap-2">
-           <span className="text-xl">🗂️</span> 내 병원 RAG 지식베이스
+           <span className="text-xl">️</span> 내 병원 RAG 지식베이스
          </h2>
          <p className="text-xs text-slate-500 mb-4">
            원장님만의 임상 매뉴얼이나 논문 PDF를 올리면, AI가 이 내용 안에서만 '환각 없이' 답변합니다.
          </p>
          
          <div className="border-2 border-dashed border-indigo-200 bg-indigo-50/50 rounded-xl p-6 text-center cursor-pointer hover:bg-indigo-50 transition mb-6">
-            <div className="text-2xl mb-2">📁</div>
+            <div className="text-2xl mb-2"></div>
             <div className="text-sm font-bold text-indigo-700">PDF, Word, TXT 업로드</div>
             <div className="text-xs text-indigo-400 mt-1">파일을 드래그하거나 클릭하여 업로드</div>
          </div>
@@ -47,7 +47,7 @@ export default function RAGReview() {
       <div className="w-full md:w-2/3 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col">
          <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-4">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-               <span className="text-xl">🤖</span> RAG 커스텀 챗봇 & 결과지 판독
+               <span className="text-xl"></span> RAG 커스텀 챗봇 & 결과지 판독
             </h2>
             <button 
                onClick={async () => {
@@ -67,7 +67,7 @@ export default function RAGReview() {
                   }
                }}
                className="text-xs font-bold px-3 py-1.5 bg-slate-800 text-white rounded hover:bg-slate-700">
-               타 병원 결과지 사진 올리기 📷
+               타 병원 결과지 사진 올리기 
             </button>
          </div>
 

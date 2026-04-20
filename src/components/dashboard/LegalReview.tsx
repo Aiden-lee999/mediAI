@@ -27,10 +27,10 @@ export default function LegalReview() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="w-full mx-auto space-y-6">
       {/* 5. 법률검토 (판례중심) */}
       <div className="bg-slate-900 p-6 rounded-xl shadow-lg border border-slate-700">
-        <h2 className="text-xl font-extrabold text-white mb-2 flex items-center gap-2">⚖️ 의료법규 및 판례 AI 어시스턴트</h2>
+        <h2 className="text-xl font-extrabold text-white mb-2 flex items-center gap-2">️ 의료법규 및 판례 AI 어시스턴트</h2>
         <p className="text-sm text-slate-300 mb-6">"내시경 중 천공 발생 시 설명의무 위반 소송 결과 찾아줘" 처럼 위험도가 높은 시술 전 체크리스트와 판례를 제공합니다.</p>
         
         <div className="relative">
@@ -42,7 +42,7 @@ export default function LegalReview() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
-          <span className="absolute left-4 top-4 text-xl opacity-50">🔍</span>
+          <span className="absolute left-4 top-4 text-xl opacity-50"></span>
           <button 
             id="legal-search-btn"
             disabled={loading}
@@ -71,7 +71,7 @@ export default function LegalReview() {
             {activeTab === 'AI 판례분석 결과' && response && (
               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm pt-6 mt-2">
                 <div className="flex items-center gap-2 mb-4 border-b pb-2">
-                  <span className="text-indigo-600 text-xl">⚖️</span>
+                  <span className="text-indigo-600 text-xl">️</span>
                   <h3 className="font-bold text-lg text-slate-800">분석 결과 요약</h3>
                 </div>
                 <p className="text-slate-700 bg-slate-50 p-4 rounded-lg mb-6 leading-relaxed">
@@ -82,7 +82,7 @@ export default function LegalReview() {
                   {response.blocks?.map((block: any, idx: number) => (
                     <div key={idx} className="border border-slate-200 rounded-lg p-4 bg-white shadow-sm">
                       <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-2">
-                        {block.block_type === 'insurance_warning' || block.block_type === 'expert_warning' ? '⚠️' : '📄'} {block.title}
+                        {block.block_type === 'insurance_warning' || block.block_type === 'expert_warning' ? '️' : ''} {block.title}
                       </h4>
                       <p className="text-sm text-slate-600 whitespace-pre-wrap">{block.body}</p>
                     </div>
@@ -109,7 +109,7 @@ export default function LegalReview() {
                         피고 병원 의사가 대장내시경 검사 과정에서 무리하게 내시경을 압박 진입하여 천공이 발생한 과실이 추정되며, 사전에 천공 발생 위험성에 대한 구체적인 설명이 동의서에 누락되었다.
                      </p>
                      <div className="bg-slate-50 p-3 rounded border border-slate-100 text-xs">
-                        <strong className="text-slate-700">💡 AI 방어 요약:</strong> 내시경 전 동의서에 "유착, 굴곡 등으로 인한 천공 가능성"을 명시하고 환자 서명을 별도로 징구할 것.
+                        <strong className="text-slate-700"> AI 방어 요약:</strong> 내시경 전 동의서에 "유착, 굴곡 등으로 인한 천공 가능성"을 명시하고 환자 서명을 별도로 징구할 것.
                      </div>
                   </div>
 
@@ -128,7 +128,7 @@ export default function LegalReview() {
 
             {activeTab === '시술 설명 동의서 생성기' && (
                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm pt-6 mt-2">
-                  <h3 className="font-bold text-slate-800 mb-4 block">🛡️ AI 시술 동의서 점검 및 자동 생성</h3>
+                  <h3 className="font-bold text-slate-800 mb-4 block">️ AI 시술 동의서 점검 및 자동 생성</h3>
                   <div className="space-y-4">
                      <input id="legal-proc" type="text" placeholder="시술명 (예: 요추 추간판 성형술)" className="w-full border border-slate-300 p-3 rounded" />
                      <textarea id="legal-memo" placeholder="현재 제공 중인 동의서 텍스트를 붙여넣기 하거나 비워두세요." className="w-full border border-slate-300 p-3 rounded min-h-[100px]"></textarea>
@@ -164,7 +164,7 @@ export default function LegalReview() {
          {/* 우측 사이드바: 면책 고지 및 퀵 링크 */}
          <div className="col-span-1 space-y-6">
             <div className="bg-rose-50 border border-rose-200 p-5 rounded-xl shadow-sm">
-               <h3 className="font-bold text-rose-800 text-sm mb-2 flex items-center gap-1">⚠️ 주의사항</h3>
+               <h3 className="font-bold text-rose-800 text-sm mb-2 flex items-center gap-1">️ 주의사항</h3>
                <p className="text-xs text-rose-700 leading-relaxed">
                   본 AI가 제공하는 판례 및 법률 정보는 참고용일 뿐이며, <strong className="underline">변호사의 법률 자문을 대체하지 않습니다.</strong> 실제 의료 분쟁 시 반드시 전문 법조인의 조력을 받으십시오.
                </p>
