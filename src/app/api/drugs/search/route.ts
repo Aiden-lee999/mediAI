@@ -26,7 +26,7 @@ type QueryPayload = {
 };
 
 const SEARCH_CACHE_TTL_MS = 1000 * 30;
-const SEARCH_RESULT_LIMIT = 120;
+const SEARCH_RESULT_LIMIT = 500;
 const searchCache = new Map<string, { expiresAt: number; data: { success: boolean; count: number; items: SearchItem[]; fallbackUsed: boolean } }>();
 
 function makeCacheKey(payload: QueryPayload) {
@@ -159,7 +159,7 @@ async function runSearch(body: QueryPayload) {
   const productNameHints = getProductNameHintsByKeyword(ingredientKeywordCandidate);
   const ingredientCodePrefixHints = getStandardCodePrefixesByKeyword(ingredientKeywordCandidate);
   const isIngredientFocusedQuery = ingredientHints.length > 0 || ingredientCodePrefixHints.length > 0;
-  const resultLimit = isIngredientFocusedQuery ? 320 : SEARCH_RESULT_LIMIT;
+  const resultLimit = isIngredientFocusedQuery ? 500 : SEARCH_RESULT_LIMIT;
 
   const isSingleCodeSearch =
     searchProducts.length === 1 &&
