@@ -238,27 +238,14 @@ export async function getIngredientNameByStandardCode(standardCode: string): Pro
 }
 
 export async function searchProductsByIngredient(keyword: string): Promise<string[]> {
-  const filePath = process.env.DRUG_PRICES_CSV_PATH || path.join(process.cwd(), 'data', 'drug_prices.csv');
   try {
-    const text = await readCsvText(filePath);
-    const lines = text.split(/\r?\n/).filter((line) => line.trim());
-    if (lines.length < 2) return [];
-
-    const headers = parseCsvLine(lines[0]);
-    const nameIdx = headers.findIndex(h => h.includes('제품명'));
-    const ingrIdx = headers.findIndex(h => h.includes('주성분명'));
+    const richMap = await loadRichDrugPrices();
     const productNames = new Set<string>();
 
-    const safeNameIdx = nameIdx > -1 ? nameIdx : 9;
-    const safeIngrIdx = ingrIdx > -1 ? ingrIdx : 7;
+    for (const data of richMap.values()) {
+      const pName = (data.productName || '').trim();
+      const iName = (data.ingredient || '').trim();
 
-    for (let i = 1; i < lines.length; i += 1) {
-      const cols = parseCsvLine(lines[i]);
-      if (cols.length <= Math.max(safeNameIdx, safeIngrIdx)) continue;
-      
-      const pName = (cols[safeNameIdx] || '').trim();
-      const iName = (cols[safeIngrIdx] || '').trim();
-      
       if (pName.includes(keyword) || iName.includes(keyword)) {
          const basePName = pName.split('(')[0].trim();
          if (basePName) {

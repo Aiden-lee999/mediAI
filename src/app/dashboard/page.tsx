@@ -116,13 +116,22 @@ export default function DashboardPage() {
 
   // 전공 맞춤형 추천 검색어
   const suggestions = useMemo(() => {
+    if (view === 'emergency') {
+      return ['아나필락시스 쇼크 에피네프린 용량', '심정지 성인 ACLS 알고리즘 간단히', '소아 경련 환자 디아제팜 용량 계산', '급성 심근경색(AMI) 초기 대처법'];
+    }
+    if (view === 'legal') {
+      return ['의료 기록 법적 책임 사례', '마취 사고 의사 과실 판례', '비급여 진료비 환불 소송', '설명의무 위반 배상 사례'];
+    }
     if (user.specialty === '내과') return ['2형 당뇨 1차 처방 최신 가이드라인', '고혈압 약제 동시 처방 주의사항', '복부 X-ray 판독해줘'];
     if (user.specialty === '피부과') return ['여드름 이소트레티노인 부작용 및 설명', '아토피 피부염 최신 초진 가이드'];
-    return ['상기도 감염 항생제 처방 기준 알려줘', '첨부한 영상 판독해줘', '요즘 주2회 알바 초빙 벤치마크해줘'];
-  }, [user.specialty]);
+    return ['상기도 감염 항생제 처방 기준 알려줘', '첨부한 영상 판독해줘', '의료법 위반 관련 판례 찾아줘'];
+  }, [user.specialty, view]);
 
   const handleCreateNewChat = () => {
-    setView('chat');
+    // If not in a chat-capable view, default to 'chat'
+    if (view !== 'chat' && view !== 'emergency' && view !== 'legal') {
+      setView('chat');
+    }
     setMessages([]);
     setAttachmentBase64(null);
     setCurrentSessionId(`session_${Date.now()}`);
@@ -151,8 +160,18 @@ export default function DashboardPage() {
     const targetText = textToSearch.trim();
     if (!targetText && !attachmentBase64) return;
     
-    const userMsg = { role: 'user', content: targetText, image: attachmentBase64 };
-    const newHistory = [...messages, userMsg];
+    // Add implicit context based on the current view
+    let contextualText = targetText;
+    if (view === 'emergency') {
+       contextualText = `[응급의료 모드] ${targetText}`;
+    } else if (view === 'legal') {
+       contextualText = `[의료법률 모드] ${targetText}`;
+    }
+
+    const userMsg = { role: 'user', content: contextualText, image: attachmentBase64 };
+    const displayMsg = { role: 'user', content: targetText, image: attachmentBase64 }; // shown in UI without prefix
+    
+    const newHistory = [...messages, displayMsg];
     setMessages(newHistory);
     
     const currentQueryPayload = {
@@ -166,10 +185,16 @@ export default function DashboardPage() {
     setIsThinking(true);
 
     try {
+      const apiHistory = messages.map(m => {
+        // preserve context if it's the latest
+        return { role: m.role, content: m.content };
+      });
+      apiHistory.push(userMsg); // Push the prefix-injected message to API only
+
       const res = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: targetText, history: newHistory, imageBase64: userMsg.image })
+        body: JSON.stringify({ question: contextualText, history: apiHistory, imageBase64: userMsg.image })
       });
       const data = await res.json();
       
@@ -184,10 +209,10 @@ export default function DashboardPage() {
       if (existingIdx >= 0) {
          newSessions[existingIdx].history = finalizedHistory;
          if (newSessions[existingIdx].title === "새로운 대화" && targetText) {
-             newSessions[existingIdx].title = targetText;
+             newSessions[existingIdx].title = targetText.slice(0, 30); // clip too long titles
          }
       } else {
-         newSessions.unshift({ id: currentSessionId, title: targetText || "새로운 대화", history: finalizedHistory, date: new Date().toLocaleDateString() });
+         newSessions.unshift({ id: currentSessionId, title: (targetText ? targetText.slice(0, 30) : "새로운 대화"), history: finalizedHistory, date: new Date().toLocaleDateString() });
       }
       setSessions(newSessions);
       localStorage.setItem('medSessions', JSON.stringify(newSessions));
@@ -434,13 +459,13 @@ export default function DashboardPage() {
           <button className="md:hidden p-2 -ml-2 text-slate-600" onClick={() => setSidebarOpen(true)}> 메뉴</button>
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-               {view === 'chat' ? '전문 의학 어시스턴트' : view === 'translate' ? '진료실 다국어 번역' : view === 'rag_review' ? 'RAG 기반 논문/가이드라인 검색 및 리뷰' : '내 라이브러리'}    
+               {view === 'chat' ? '전문 의학 어시스턴트' : view === 'emergency' ? '🚨 실시간 응급(ER) 어시스턴트' : view === 'legal' ? '⚖️ 의료 법률 및 판례 어시스턴트' : view === 'translate' ? '진료실 다국어 번역' : view === 'rag_review' ? 'RAG 기반 논문/가이드라인 검색 및 리뷰' : '내 라이브러리'}    
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-               {view === 'chat' ? '진료, 연구, 약물 보조 및 종합 인텔리전스' : view === 'translate' ? '복약지도 및 소견서 임상 번역' : view === 'rag_review' ? '최신 논문 기반 응답 및 동료 의사 리뷰 워크플로우 연동' : '저장된 중요 레퍼런스 모음'}
+               {view === 'chat' ? '진료, 연구, 약물 보조 및 종합 인텔리전스' : view === 'emergency' ? '긴급 상황 프로토콜, 용량 계산, 처치 우선순위 즉각 답변' : view === 'legal' ? '의료분쟁 판례 검색, 의료법 해석, 방어 진료 지침' : view === 'translate' ? '복약지도 및 소견서 임상 번역' : view === 'rag_review' ? '최신 논문 기반 응답 및 동료 의사 리뷰 워크플로우 연동' : '저장된 중요 레퍼런스 모음'}
             </p>
           </div>
-          {view === 'chat' && messages.length > 0 && (
+          {(view === 'chat' || view === 'emergency' || view === 'legal') && messages.length > 0 && (
              <button onClick={handleSaveToLibrary} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm border border-slate-300 font-medium hidden sm:block">
                + 라이브러리 저장
              </button>
@@ -450,17 +475,25 @@ export default function DashboardPage() {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50" ref={scrollRef}>
           
           {/* ===================== CHAT VIEW ===================== */}
-          {view === 'chat' && (
+          {(view === 'chat' || view === 'emergency' || view === 'legal') && (
             <>
               {messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center w-full pb-20">
-                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4 text-blue-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-                    </svg>
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${view === 'emergency' ? 'bg-red-100 text-red-600' : view === 'legal' ? 'bg-yellow-100 text-yellow-600' : 'bg-blue-100 text-blue-600'}`}>
+                    {view === 'emergency' ? (
+                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    ) : view === 'legal' ? (
+                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364 6.364l-1.414-1.414M7.05 7.05L5.636 5.636m12.728 0l-1.414 1.414M7.05 16.95l-1.414 1.414M12 8a4 4 0 100 8 4 4 0 000-8z" /></svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                      </svg>
+                    )}
                   </div>
                   <h2 className="text-2xl font-bold text-slate-800 mb-2">무엇을 도와드릴까요, {user.name} 원장님?</h2>
-                  <p className="text-slate-500 text-sm mb-6">환자 증상, X-Ray 사진 판독, 약물 상호작용(DDI), 최신 가이드라인 검색 등을 지원합니다.</p>
+                  <p className="text-slate-500 text-sm mb-6">
+                     {view === 'emergency' ? '실시간 응급 대응 프로토콜 및 용량 계산' : view === 'legal' ? '의료분쟁 예방 및 판례 분석' : '환자 증상, X-Ray 사진 판독, 약물 상호작용(DDI), 최신 가이드라인 검색 등 지식 베이스 검색을 지원합니다.'}
+                  </p>
                   
                   <button 
                     onClick={() => fileInputRef.current?.click()} 
@@ -544,15 +577,13 @@ export default function DashboardPage() {
           {view === 'drug' && <DrugSearch />}
           {view === 'guide' && <PrescribeGuide />}
           {view === 'case' && <PrescribeGuide />}
-          {view === 'emergency' && <Emergency />}
-          {view === 'legal' && <LegalReview />}
           {view === 'translate' && <TranslateMCA />}
           {view === 'settings' && <SettingsMyPage />}
 
         </main>
 
         {/* 하단 입력창 도크 (채팅 모드일 때만 표시) */}
-        {view === 'chat' && (
+        {(view === 'chat' || view === 'emergency' || view === 'legal') && (
           <div className="bg-white border-t border-slate-200 p-3 sm:p-4 z-30">
             {attachmentBase64 && (
               <div className="relative inline-block mb-3">
