@@ -86,9 +86,14 @@ export function parseCsvLine(line: string) {
   return result;
 }
 
-// Just safely decode EUC-KR directly since government CSVs are Euc-Kr
+// Automatically detect and decode appropriately
 async function readCsvText(filePath: string) {
   const raw = await fs.readFile(filePath);
+  const utf8Str = raw.toString('utf8');
+  // if it decodes clearly into Korean (i.e. contains "제품코드", "약가" etc.) use utf8.
+  if (utf8Str.includes('제품') || utf8Str.includes('코드') || utf8Str.includes('상한금액')) {
+     return utf8Str;
+  }
   return iconv.decode(raw, 'euc-kr');
 }
 
@@ -121,9 +126,9 @@ export async function loadRichDrugPrices(): Promise<Map<string, DrugPriceData>> 
     }
 
     const headers = parseCsvLine(lines[0]);
-    const safeProductCodeIdx = headers.findIndex(h => h.includes('제품코드')) > -1 ? headers.findIndex(h => h.includes('제품코드')) : 8;
-    const safePriceIdx = headers.findIndex(h => h.includes('상한금액')) > -1 ? headers.findIndex(h => h.includes('상한금액')) : 13;
-    const safeIngrIdx = headers.findIndex(h => h.includes('주성분명')) > -1 ? headers.findIndex(h => h.includes('주성분명')) : 7;
+    const safeProductCodeIdx = headers.findIndex(h => h.includes('제품코드') || h.includes('표준코드')) > -1 ? headers.findIndex(h => h.includes('제품코드') || h.includes('표준코드')) : 8;
+    const safePriceIdx = headers.findIndex(h => h.includes('상한금액') || h.includes('금액')) > -1 ? headers.findIndex(h => h.includes('상한금액') || h.includes('금액')) : 13;
+    const safeIngrIdx = headers.findIndex(h => h.includes('주성분명') || h.includes('성분')) > -1 ? headers.findIndex(h => h.includes('주성분명') || h.includes('성분')) : 7;
     const safeNameIdx = headers.findIndex(h => h.includes('제품명')) > -1 ? headers.findIndex(h => h.includes('제품명')) : 9;
 
     const richMap = new Map<string, DrugPriceData>();
