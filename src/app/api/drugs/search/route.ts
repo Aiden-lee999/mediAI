@@ -487,9 +487,8 @@ async function runSearch(body: QueryPayload) {
 
     if (p && /[0-9]/.test(p) && p !== '가격정보없음') {
       if (!p.includes('원')) p += '원';
-    } else if (c.includes('비급여')) {
-      // Keep label factual but avoid over-assertive wording.
-      p = '비급여';
+    } else if (c.includes('비급여') || (item.type || '').includes('일반')) {
+      p = (item.type || '').includes('일반') ? '일반의약품' : '비급여';
     } else {
       p = '가격정보없음';
     }
@@ -504,17 +503,21 @@ async function runSearch(body: QueryPayload) {
         ? String(csvData?.productName).trim()
         : (productNameFromDb || '-');
 
+    let finalPriceLabel = '';
+    if (p === '가격정보없음') {
+       finalPriceLabel = c.includes('비급여') ? '비급여' : '가격 미상 / ' + c;
+    } else if (p === '비급여') {
+       finalPriceLabel = p;
+    } else {
+       finalPriceLabel = p + ' / ' + c;
+    }
+
     return {
       id: item.standardCode || item.id,
       productName: finalProductName,
       ingredientName: finalIngr,
       company: item.company || '-',
-      priceLabel:
-        p === '가격정보없음'
-          ? '가격정보없음 / ' + c
-          : p === '비급여'
-            ? p
-            : p + ' / ' + c,
+      priceLabel: finalPriceLabel,
       reimbursement: c,
       insuranceCode: item.insuranceCode || item.standardCode || '-',
       standardCode: item.standardCode || '-',
@@ -540,7 +543,7 @@ async function runSearch(body: QueryPayload) {
   }
 
   const normalizedItems = finalItems.map((item) => {
-    if (!item.priceLabel.startsWith('가격정보없음')) return item;
+    if (!item.priceLabel.startsWith('가격 미상') && !item.priceLabel.startsWith('가격정보없음')) return item;
 
     const baseName = normalizeBaseProductName(item.productName);
     const inferredPrice = knownPriceByBaseName.get(baseName);
@@ -548,20 +551,28 @@ async function runSearch(body: QueryPayload) {
 
     return {
       ...item,
-      priceLabel: `${inferredPrice} / ${item.reimbursement}`,
+      priceLabel: `${inferredPrice} (추정) / ${item.reimbursement}`,
     };
   });
 
-  // 기본은 제품명+제조사 기준 중복 제거. 성분 검색은 코드 variant를 보존해 폭넓게 노출.
-  const preserveVariantsForIngredientSearch = isIngredientFocusedQuery;
+  // 제품명+제조사 기준으로 중복을 강하게 제거하여 검색 결과 화면 개선.
   const dedupMap = new Map<string, SearchItem>();
   for (const item of normalizedItems) {
-    const key = preserveVariantsForIngredientSearch
-      ? `${item.productName}__${item.company}__${item.standardCode || item.id}`
-      : `${item.productName}__${item.company}`;
+    const key = `${normalizeBaseProductName(item.productName)}__${item.company}`;
     const prev = dedupMap.get(key);
-    if (!prev || item.usageFrequency > prev.usageFrequency) {
-      dedupMap.set(key, item);
+    // 같은 제품이라면 비급여보다는 급여 정보를 우대, 혹은 빈도순으로 우대.
+    const isItemPriced = /[0-9]/.test(item.priceLabel) && !item.priceLabel.includes('가격정보없음');
+    const isPrevPriced = prev ? /[0-9]/.test(prev.priceLabel) && !prev.priceLabel.includes('가격정보없음') : false;
+
+    if (!prev) {
+       dedupMap.set(key, item);
+    } else {
+       // 빈도가 압도적이거나 가격 정보가 있는 것을 우선
+       if (isItemPriced && !isPrevPriced) {
+          dedupMap.set(key, item);
+       } else if (isItemPriced === isPrevPriced && item.usageFrequency > prev.usageFrequency) {
+          dedupMap.set(key, item);
+       }
     }
   }
 
@@ -593,9 +604,7 @@ async function runSearch(body: QueryPayload) {
       const preferred = [...textMatched, ...atcMatched];
       const uniq = new Map<string, SearchItem>();
       for (const item of preferred) {
-        const key = preserveVariantsForIngredientSearch
-          ? `${item.productName}__${item.company}__${item.standardCode || item.id}`
-          : `${item.productName}__${item.company}`;
+        const key = `${normalizeBaseProductName(item.productName)}__${item.company}`;
         if (!uniq.has(key)) uniq.set(key, item);
       }
       dedupedItems = Array.from(uniq.values());
