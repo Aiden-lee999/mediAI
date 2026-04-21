@@ -90,9 +90,13 @@ export function parseCsvLine(line: string) {
 async function readCsvText(filePath: string) {
   const raw = await fs.readFile(filePath);
   const utf8Str = raw.toString('utf8');
-  // if it decodes clearly into Korean (i.e. contains "제품코드", "약가" etc.) use utf8.
-  if (utf8Str.includes('제품') || utf8Str.includes('코드') || utf8Str.includes('상한금액')) {
+  // If it decodes clearly into Korean uses utf8.
+  if (utf8Str.includes('제품코드') || utf8Str.includes('상한금액') || utf8Str.includes('주성분명')) {
      return utf8Str;
+  }
+  // If it contains the euckr broken characters when read as utf8, it means it's euckr encoded natively
+  if (utf8Str.includes('?쒗뭹') || utf8Str.includes('肄붾뱶') || utf8Str.includes('?곹븳湲덉븸')) {
+     return iconv.decode(raw, 'euc-kr');
   }
   return iconv.decode(raw, 'euc-kr');
 }
