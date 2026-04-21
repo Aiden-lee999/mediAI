@@ -8,7 +8,31 @@ export default function DrugSearch() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedDrug, setSelectedDrug] = useState<any>(null);
-  
+
+  // Sorting state
+  const [sortCol, setSortCol] = useState<string>('brandClass');
+  const [isAsc, setIsAsc] = useState<boolean>(true);
+
+  const handleSort = (col: string) => {
+    const asc = sortCol === col ? !isAsc : true;
+    setSortCol(col);
+    setIsAsc(asc);
+
+    const sorted = [...searchResults].sort((a: any, b: any) => {
+      let valA = a[col] || '';
+      let valB = b[col] || '';
+
+      if (col === 'brandClass') {
+          valA = a.brandClass === '오리지널(대장약)' ? 0 : 1;
+          valB = b.brandClass === '오리지널(대장약)' ? 0 : 1;
+          return asc ? valA - valB : valB - valA;
+      }
+      
+      return asc ? String(valA).localeCompare(String(valB)) : String(valB).localeCompare(String(valA));
+    });
+    setSearchResults(sorted);
+  };
+
   const [durInfo, setDurInfo] = useState<any>(null);
   const [durLoading, setDurLoading] = useState(false);
   
@@ -62,13 +86,20 @@ export default function DrugSearch() {
     if (!searchTerm.trim()) return;
     setLoading(true);
     setError('');
-    
+
     try {
       const res = await fetch(`/api/drugs/search?productName=${encodeURIComponent(searchTerm)}`);
       const data = await res.json();
-      
+
       if (res.ok) {
-        setSearchResults(data.items || []);
+        // By default, original first
+        const sorted = (data.items || []).sort((a: any, b: any) => {
+          const aClass = a.brandClass === '오리지널(대장약)' ? 0 : 1;
+          const bClass = b.brandClass === '오리지널(대장약)' ? 0 : 1;
+          if (aClass !== bClass) return aClass - bClass;
+          return b.usageFrequency - a.usageFrequency;
+        });
+        setSearchResults(sorted);
         setActiveTab('검색결과'); // Add a tab for search results
       } else {
         setError(`검색 오류: ${data.message || res.statusText}`);
@@ -78,6 +109,26 @@ export default function DrugSearch() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSort = (column: string) => {
+    const newIsAsc = sortCol === column ? !isAsc : true;
+    setIsAsc(newIsAsc);
+    setSortCol(column);
+
+    const sorted = [...searchResults].sort((a, b) => {
+      let valA = a[column] || '';
+      let valB = b[column] || '';
+
+      if (column === 'brandClass') {
+          valA = a.brandClass === '오리지널(대장약)' ? 0 : 1;
+          valB = b.brandClass === '오리지널(대장약)' ? 0 : 1;
+          return newIsAsc ? valA - valB : valB - valA;
+      }
+      return newIsAsc ? String(valA).localeCompare(String(valB)) : String(valB).localeCompare(String(valA));
+    });
+
+    setSearchResults(sorted);
   };
 
   return (
@@ -106,7 +157,7 @@ export default function DrugSearch() {
 
         <div className="flex border-b border-slate-200">
           {['검색결과', '급여조회', '대체약제', 'DUR 점검', '복약지도'].map(tab => (
-             <button 
+             <button
                key={tab}
                className={`py-3 px-6 font-bold text-sm border-b-2 transition ${activeTab === tab ? 'border-blue-600 text-blue-700 bg-blue-50/50' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
                onClick={() => setActiveTab(tab)}
@@ -130,7 +181,7 @@ export default function DrugSearch() {
                  <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                    <span className="text-blue-500"></span> 검색 결과 {searchResults.length > 0 && `(${searchResults.length}건)`}
                  </h3>
-                 
+
                  {loading ? (
                    <div className="text-center py-8 text-slate-500">검색 중입니다...</div>
                  ) : searchResults.length > 0 ? (
@@ -138,19 +189,25 @@ export default function DrugSearch() {
                     <table className="w-full text-sm text-left">
                        <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                           <tr>
-                             <th className="p-3">제품명</th>
-                             <th className="p-3">성분명</th>
-                             <th className="p-3">제약사</th>
-                             <th className="p-3">보험약가</th>
+                             <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('productName')}>제품명 {sortCol === 'productName' && (isAsc ? '▲' : '▼')}</th>
+                             <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('brandClass')}>구분 {sortCol === 'brandClass' && (isAsc ? '▲' : '▼')}</th>
+                             <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('ingredientName')}>주성분 {sortCol === 'ingredientName' && (isAsc ? '▲' : '▼')}</th>
+                             <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('reimbursement')}>급여 {sortCol === 'reimbursement' && (isAsc ? '▲' : '▼')}</th>
+                             <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('priceLabel')}>약가 {sortCol === 'priceLabel' && (isAsc ? '▲' : '▼')}</th>
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-slate-100">
                           {searchResults.map((item, idx) => (
                           <tr key={idx} className="hover:bg-slate-50 cursor-pointer" onClick={() => handleSelectDrug(item)}>
                              <td className="p-3 font-bold text-blue-700">{item.productName}</td>
+                             <td className="p-3 text-xs">
+                               <span className={`px-2 py-0.5 rounded-full ${item.brandClass === '오리지널(대장약)' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+                                 {item.brandClass || '복제약(제네릭)'}
+                               </span>
+                             </td>
                              <td className="p-3 text-slate-600">{item.ingredientName || '-'}</td>
-                             <td className="p-3">{item.company || '-'}</td>
-                             <td className="p-3">{item.priceLabel || item.reimbursement || '-'}</td>
+                             <td className="p-3">{item.reimbursement || '-'}</td>
+                             <td className="p-3">{item.priceLabel || '-'}</td>
                           </tr>
                           ))}
                        </tbody>
@@ -158,7 +215,7 @@ export default function DrugSearch() {
                    </div>
                  ) : (
                    <div className="text-center py-8 text-slate-500">
-                     검색 결과가 없습니다. 다른 키워드로 검색해보세요.
+                     검색 결과가 없습니다. 다른 검색어로 검색해보세요.
                    </div>
                  )}
               </div>
