@@ -1,239 +1,105 @@
+
 'use client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { Activity, Beaker } from 'lucide-react';
+
+const EMERGENCY_PROTOCOLS: Record<string, any> = {
+  '심정지 (ACLS)': {
+    title: '성인 심정지 즉각 조치 프로토콜 (ACLS)',
+    description: '환자 호흡과 맥박이 없을 때 즉각 시행해야 하는 생명 구조 필수 알고리즘.',
+    steps: [
+      { action: '1. CPR 및 산소', detail: '가슴을 강하고 빠르게 압박(분당 100-120회, 깊이 5cm). 100% 산소를 투여.' },
+      { action: '2. 리듬 제세동', detail: 'VF/pVT인 경우 120~200J 제세동 1회 실시 직후 CPR 재개.' },
+      { action: '3. 에피네프린 투여', detail: 'Epinephrine 1mg IV/IO 투여. 매 3~5분 간격 반복.' },
+      { action: '4. 아미오다론 투여', detail: 'VF/pVT 지속 시 첫 번째 300mg, 두 번째 150mg IV/IO 투여.' }
+    ]
+  },
+  '아나필락시스': {
+    title: '아나필락시스 초응급 처치',
+    description: '알레르기 반응이 기도 폐쇄 및 쇼크를 유발하는 극심한 응급상황.',
+    steps: [
+      { action: '1. 에피네프린 IM 주사 (최우선)', detail: '대퇴부 전외측에 에피네프린(1:1000) 0.3~0.5mg 근육주사. (5~15분 간격 반복)' },
+      { action: '2. 산소 및 자세', detail: '산소(8-10 L/min) 투여. 하지를 올린 상태로 눕혀 정맥 환류량 확보.' },
+      { action: '3. 수액 보충', detail: '저혈압 시 생리식염수(N/S) 1~2L 급속 투여.' },
+      { action: '4. 보조 약물', detail: '항히스타민제(디펜히드라민 25-50mg IV) 및 부신피질호르몬 125mg IV.' }
+    ]
+  },
+  '급성 저혈당': {
+    title: '중증 급성 저혈당 뇌손상 방지',
+    description: '혈당 수치 저하로 발작, 혼수 상태를 유발할 수 있음.',
+    steps: [
+      { action: '1. 의식 확인 및 경구 당 투여', detail: '의식이 뚜렷하다면 단순 당 15~20g 경구 투여.' },
+      { action: '2. 정맥 포도당 투여', detail: '의식이 없으면 50% 포도당(50% DW) 50mL 즉시 정맥주사(IV bolus).' },
+      { action: '3. 글루카곤 주사 (정맥로 불가시)', detail: '정맥로 확보가 지연되면 글루카곤 1mg IM 또는 SC 투여.' }
+    ]
+  },
+  '뇌전증 발작': {
+    title: '뇌전증 중첩증 (Status Epilepticus)',
+    description: '5분 이상 발작이 계속되거나, 의식 회복 없이 반복될 때.',
+    steps: [
+      { action: '1. 기도 보호', detail: '환자를 위험환경에서 분리하고 몸을 옆으로 눕힘. 억지로 입벌리기 금지.' },
+      { action: '2. 1차 항경련제 벤조디아제핀', detail: 'Lorazepam 4mg IV 또는 Diazepam 10mg IV 투여.' },
+      { action: '3. 2차 항경련제 부하', detail: '발작지속 시 Phenytoin (20mg/kg) 또는 Valproate 정맥 투여.' },
+      { action: '4. 기도삽관 고려', detail: '호흡 억제 징후 시 인공호흡기 준비 및 프로포폴 투여 병행.' }
+    ]
+  }
+};
 
 export default function Emergency() {
-  const [weight, setWeight] = useState<number>(60);
-  const [algorithm, setAlgorithm] = useState<string>('ACLS');
-  const [elapsedTime, setElapsedTime] = useState<number>(0);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
-
-  useEffect(() => {
-     let interval: any;
-     if (isRunning) {
-        interval = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
-     }
-     return () => clearInterval(interval);
-  }, [isRunning]);
-
-  const formatTime = (secs: number) => {
-     const m = Math.floor(secs / 60).toString().padStart(2, '0');
-     const s = (secs % 60).toString().padStart(2, '0');
-     return `${m}:${s}`;
-  };
-
-  const [antidoteQuery, setAntidoteQuery] = useState('');
-  const [antidoteLoading, setAntidoteLoading] = useState(false);
-  const [antidotes, setAntidotes] = useState<any>(null);
-
-  const handleAntidoteSearch = async () => {
-    if (!antidoteQuery.trim()) return;
-    setAntidoteLoading(true);
-    try {
-      const res = await fetch('/api/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: `${antidoteQuery} 중독에 대한 해독제와 체중 ${weight}kg 기준의 투여 용량을 알려주세요.` })
-      });
-      const data = await res.json();
-      setAntidotes(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setAntidoteLoading(false);
-    }
-  };
+  const [activeProtocol, setActiveProtocol] = useState<string | null>(null);
 
   return (
-    <div className="w-full  space-y-6">
-      <div className="bg-red-600 text-white p-6 rounded-xl shadow-lg border border-red-700 flex justify-between items-center">
-         <div>
-            <h2 className="text-2xl font-extrabold mb-1"> 원클릭 응급처치 (ACLS / Anaphylaxis)</h2>
-            <p className="text-red-100 text-sm">입력된 체중에 맞춰 약물 용량이 즉각 환산되며 타이머가 연동됩니다.</p>
-         </div>
-         <div className="text-right">
-            <div className="text-red-200 text-xs font-bold mb-1">환자 예상 체중 (kg)</div>
-            <div className="flex gap-2">
-               <button onClick={()=>setWeight(w=>Math.max(10, w-5))} className="bg-red-700 hover:bg-red-800 px-3 py-1 rounded font-bold">-</button>
-               <input 
-                  type="number" 
-                  className="w-20 text-center bg-white text-red-900 font-bold rounded"
-                  value={weight}
-                  onChange={(e) => setWeight(Number(e.target.value))}
-               />
-               <button onClick={()=>setWeight(w=>w+5)} className="bg-red-700 hover:bg-red-800 px-3 py-1 rounded font-bold">+</button>
-            </div>
-         </div>
-      </div>
+    <div className="p-2 w-full mx-auto space-y-6">
+       <div className="bg-red-600 rounded-xl p-8 text-white shadow-xl mb-8 flex flex-col justify-center border-l-8 border-red-800">
+          <h2 className="text-2xl sm:text-3xl font-extrabold mb-3 flex items-center gap-3">
+             <Activity className="w-8 h-8"/> 1초가 급한 순간, 즉각 대응 프로토콜
+          </h2>
+          <p className="text-red-100 text-lg">가장 치명적인 4대 응급 상황입니다. 복잡한 입력 없이 클릭 한 번으로 대응 순서를 바로 확인하세요.</p>
+       </div>
 
-      <div className="flex gap-4">
-         <button onClick={()=>setAlgorithm('ACLS')} className={`flex-1 py-4 font-extrabold rounded-lg border-2 transition ${algorithm === 'ACLS' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-slate-200 text-slate-500 hover:border-red-300'}`}>성인 심정지 알고리즘 (ACLS)</button>
-         <button onClick={()=>setAlgorithm('Anaphylaxis')} className={`flex-1 py-4 font-extrabold rounded-lg border-2 transition ${algorithm === 'Anaphylaxis' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-white border-slate-200 text-slate-500 hover:border-amber-300'}`}>아나필락시스 쇼크</button>
-      </div>
+       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          {Object.keys(EMERGENCY_PROTOCOLS).map((key) => (
+             <button
+               key={key}
+               onClick={() => setActiveProtocol(key)}
+               className={`p-6 rounded-2xl border-2 font-bold text-xl text-left transition transform shadow-sm ${
+                 activeProtocol === key 
+                 ? 'bg-red-50 border-red-500 text-red-700 shadow-md scale-100' 
+                 : 'bg-white border-slate-200 text-slate-700 hover:border-red-300 hover:bg-red-50 scale-95'
+               }`}
+             >
+               <span className="flex justify-between items-center">
+                  {key} 
+                </span>
+             </button>
+          ))}
+       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-         {/* 좌측 메인 플로우 */}
-         <div className="col-span-2 space-y-4">
-            {algorithm === 'ACLS' && (
-               <div className="bg-white p-6 rounded-xl shadow-sm border-2 border-red-200">
-                  <div className="flex justify-between items-center mb-6 pb-4 border-b border-red-100">
-                     <h3 className="font-extrabold text-slate-800 flex items-center gap-2 text-lg">
-                        <span className="text-red-600">⏱️</span> CPR 타이머 & 투약 스케줄
-                     </h3>
-                     <div className="flex items-center gap-4">
-                        <div className="text-3xl font-mono text-red-600 tracking-wider font-extrabold w-24 text-right">
-                           {formatTime(elapsedTime)}
-                        </div>
-                        <button 
-                           className={`px-4 py-2 font-bold rounded text-white ${isRunning ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-800 hover:bg-slate-900'}`}
-                           onClick={() => setIsRunning(!isRunning)}
-                        >
-                           {isRunning ? '일시정지' : 'CPR 시작'}
-                        </button>
-                        <button className="text-xs text-slate-500 underline" onClick={()=>setElapsedTime(0)}>초기화</button>
-                     </div>
-                  </div>
-
-                  <div className="space-y-4">
-                     <div className="p-4 bg-red-50 rounded-lg border border-red-200 flex justify-between items-center">
-                        <div>
-                           <div className="text-red-900 font-bold mb-1">Epinephrine 1mg IV/IO</div>
-                           <div className="text-sm text-red-700">매 3~5분마다 투여 (현 체중 무관 성인 1앰플)</div>
-                        </div>
-                        <button className="bg-white border-2 border-red-500 text-red-600 font-bold px-6 py-3 rounded-xl hover:bg-red-50 active:bg-red-600 active:text-white transition shadow-sm">
-                           투여 완료 기록
-                        </button>
-                     </div>
-
-                     <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center">
-                        <div>
-                           <div className="text-slate-800 font-bold mb-1">Amiodarone (VF/pVT)</div>
-                           <div className="text-sm text-slate-600">첫 투여: <span className="font-bold text-blue-600">300mg IV/IO</span> (2번의 제세동 후)</div>
-                        </div>
-                        <button className="bg-white border-2 border-slate-300 text-slate-600 font-bold px-6 py-3 rounded-xl hover:bg-slate-100 active:bg-slate-600 active:text-white transition">
-                           300mg 투여
-                        </button>
-                     </div>
-
-                     <div className="w-full bg-blue-50 border-l-4 border-blue-500 p-4 mt-6">
-                        <strong className="text-blue-900 block mb-1">리듬 확인 (맥박 촉지) 최소화</strong>
-                        <p className="text-sm text-blue-800">2분마다 제세동기를 통해 리듬 분석. 가슴압박 중단 시간은 10초 이내로 최소화하세요.</p>
-                     </div>
-                  </div>
-               </div>
-            )}
-
-            {algorithm === 'Anaphylaxis' && (
-               <div className="bg-white p-6 rounded-xl shadow-sm border-2 border-amber-200">
-                  <h3 className="font-extrabold text-slate-800 flex items-center gap-2 text-lg mb-6 pb-4 border-b border-amber-100">
-                     <span className="text-amber-500"></span> 아나필락시스 초동 대처
-                  </h3>
-
-                  <div className="space-y-4">
-                     <div className="p-5 bg-amber-50 rounded-lg border border-amber-200">
-                        <div className="flex bg-amber-100/50 p-2 rounded justify-between mb-4">
-                           <span className="text-amber-900 font-bold">에피네프린 근육주사 (IM)</span>
-                           <span className="text-amber-700 font-bold text-xs bg-white px-2 py-1 border border-amber-200 rounded-full">1순위</span>
-                        </div>
-                        <div className="flex items-center gap-4 text-center">
-                           <div className="flex-1 bg-white p-4 rounded-xl border border-amber-100 shadow-sm">
-                              <div className="text-xs text-slate-500 mb-1">농도비 (1:1000)</div>
-                              <div className="text-2xl font-extrabold text-amber-600 mb-1">0.3 ~ 0.5 <span className="text-sm font-medium">mg</span></div>
-                              <div className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded">성인 / 대퇴부 전외측</div>
-                           </div>
-                           <div className="flex-1">
-                              <p className="text-sm text-amber-900 text-left leading-relaxed">
-                                필요시 5~15분 간격으로 최대 3회까지 반복 투여합니다.<br/><br/>
-                                <span className="font-bold underline text-red-600">절대 정맥주사(IV)로 투여하지 마십시오 (심실빈맥 위험)</span>
-                              </p>
-                           </div>
-                        </div>
-                     </div>
-
-                     <div className="flex gap-4">
-                        <div className="flex-1 p-4 bg-slate-50 rounded border border-slate-200">
-                           <h4 className="font-bold text-slate-700 text-sm mb-2">보조 요법 1. 항히스타민제</h4>
-                           <div className="text-xs text-slate-600">
-                              <span className="font-bold text-blue-600">Chlorpheniramine</span> 1앰플 (4mg) IV/IM<br/>or <span className="font-bold text-blue-600">Peniramine</span>
-                           </div>
-                        </div>
-                        <div className="flex-1 p-4 bg-slate-50 rounded border border-slate-200">
-                           <h4 className="font-bold text-slate-700 text-sm mb-2">보조 요법 2. 스테로이드</h4>
-                           <div className="text-xs text-slate-600">
-                              <span className="font-bold text-blue-600">Hydrocortisone</span> 250mg IV <br/> or <span className="font-bold text-blue-600">Methylprednisolone</span> 125mg IV
-                           </div>
-                        </div>
-                     </div>
-                  </div>
-               </div>
-            )}
-         </div>
-
-         {/* 중독 해독제 사전 */}
-         <div className="col-span-1 bg-slate-800 rounded-xl p-6 shadow-lg text-slate-50 relative overflow-hidden h-full flex flex-col border border-slate-700">
-            <h3 className="font-extrabold text-white flex items-center gap-2 mb-4 border-b border-slate-600 pb-3">
-               <span className="text-indigo-400"></span> 독성학/해독제 (Antidote)
-            </h3>
-            
-            <div className="relative mb-4">
-               <input 
-                  type="text" 
-                  value={antidoteQuery}
-                  onChange={(e) => setAntidoteQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAntidoteSearch()}
-                  className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-sm text-white focus:outline-none focus:border-indigo-400 pr-12"
-                  placeholder="원인 약물 또는 독극물 검색"
-               />
-               <button 
-                 onClick={handleAntidoteSearch}
-                 disabled={antidoteLoading}
-                 className="absolute right-2 top-2 bg-indigo-600 hover:bg-indigo-700 text-white p-1.5 rounded text-xs transition disabled:opacity-50">
-                 {antidoteLoading ? '...' : '검색'}
-               </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto pr-2 space-y-3">
-               {antidotes ? (
-                  <div className="bg-slate-700/50 p-4 rounded border border-indigo-500 shadow-inner">
-                     <h4 className="font-bold text-indigo-300 mb-2 border-b border-slate-600 pb-1">AI 해독 분석 결과</h4>
-                     <p className="text-sm text-slate-200 leading-relaxed mb-3">
-                        {antidotes.chat_reply}
-                     </p>
-                     {antidotes.blocks?.map((block: any, idx: number) => (
-                        <div key={idx} className="bg-slate-800 p-2 rounded text-xs border border-slate-600 mt-2">
-                           <strong className="text-emerald-400 block mb-1">{block.title}</strong>
-                           <span className="text-slate-300">{block.body}</span>
-                        </div>
-                     ))}
-                     <button onClick={() => setAntidotes(null)} className="mt-4 text-xs text-slate-400 underline">돌아가기</button>
-                  </div>
-               ) : (
-                  <>
-                     <div className="bg-slate-700/50 p-3 rounded border border-slate-600 hover:bg-slate-700 transition cursor-pointer">
-                        <div className="flex justify-between items-start mb-1">
-                           <span className="font-bold text-indigo-300">Acetaminophen (타이레놀)</span>
-                        </div>
-                        <div className="text-sm text-slate-300 mb-1">해독: <span className="font-bold text-white">N-acetylcysteine (NAC)</span></div>
-                        <div className="text-xs text-slate-400">초기 부하용량: <span className="font-bold text-emerald-400">{weight * 150} mg</span> (체중 {weight}kg 적용)</div>
-                     </div>
-                     <div className="bg-slate-700/50 p-3 rounded border border-slate-600 hover:bg-slate-700 transition cursor-pointer">
-                        <div className="flex justify-between items-start mb-1">
-                           <span className="font-bold text-indigo-300">Benzodiazepines (수면제)</span>
-                        </div>
-                        <div className="text-sm text-slate-300 mb-1">해독: <span className="font-bold text-white">Flumazenil</span></div>
-                        <div className="text-xs text-slate-400">0.2mg 정맥주사 발현 확인 후 증량</div>
-                     </div>
-                     <div className="bg-slate-700/50 p-3 rounded border border-slate-600 hover:bg-slate-700 transition cursor-pointer">
-                        <div className="flex justify-between items-start mb-1">
-                           <span className="font-bold text-indigo-300">Opioids (마약성 진통제)</span>
-                        </div>
-                        <div className="text-sm text-slate-300 mb-1">해독: <span className="font-bold text-white">Naloxone</span></div>
-                        <div className="text-xs text-slate-400">0.4 ~ 2.0mg IV 반복</div>
-                     </div>
-                  </>
-               )}
-            </div>
-         </div>
-      </div>
+       {activeProtocol && (
+          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-10 border-t-8 border-t-red-600">
+             <div className="flex flex-col sm:flex-row justify-between items-start mb-6">
+                <div>
+                   <h3 className="text-3xl font-extrabold text-slate-900 mb-2">{EMERGENCY_PROTOCOLS[activeProtocol].title}</h3>
+                   <p className="text-lg text-slate-500 font-medium">{EMERGENCY_PROTOCOLS[activeProtocol].description}</p>
+                </div>
+                <button onClick={() => setActiveProtocol(null)} className="mt-4 sm:mt-0 font-bold bg-slate-100 text-slate-500 px-4 py-2 hover:bg-slate-200 rounded-full transition">닫기</button>
+             </div>
+             
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
+                {EMERGENCY_PROTOCOLS[activeProtocol].steps.map((step: any, idx: number) => (
+                   <div key={idx} className="bg-slate-50 rounded-xl p-6 border border-slate-200 shadow-sm flex items-start gap-4">
+                      <div className="bg-red-600 text-white w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-black text-xl shrink-0 shadow-md">
+                         {idx + 1}
+                      </div>
+                      <div>
+                         <h4 className="text-xl font-bold text-slate-800 mb-2">{step.action.replace(/^d+.s*/, '')}</h4>
+                         <p className="text-slate-600 text-base font-medium leading-relaxed">{step.detail}</p>
+                      </div>
+                   </div>
+                ))}
+             </div>
+          </div>
+       )}
     </div>
   );
 }

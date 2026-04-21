@@ -79,7 +79,8 @@ export default function DrugSearch() {
     setSelectedDrug(drug);
     fetchDUR(drug);
     fetchLLMInfo(drug);
-    setActiveTab('급여조회');
+    // DO NOT change activeTab automatically to allow the user to keep viewing search results!
+    setActiveTab('湲됱뿬議고쉶');
   };
 
   const handleSearch = async () => {
@@ -178,8 +179,8 @@ export default function DrugSearch() {
                        </thead>
                        <tbody className="divide-y divide-slate-100">
                           {searchResults.map((item, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50 cursor-pointer" onClick={() => handleSelectDrug(item)}>
-                             <td className="p-3 font-bold text-blue-700">{item.productName}</td>
+                          <tr key={idx} className={`hover:bg-slate-50 cursor-pointer ${selectedDrug?.productName === item.productName ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`} onClick={() => handleSelectDrug(item)}>
+                             <td className="p-3 font-[800] text-blue-700 max-w-[120px] sm:max-w-[160px] lg:max-w-[200px] break-words whitespace-normal leading-tight">{item.productName}</td>
                              <td className="p-3 text-xs">
                                <span className={`px-2 py-0.5 rounded-full ${item.brandClass === '오리지널(대장약)' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
                                  {item.brandClass || '복제약(제네릭)'}
@@ -187,7 +188,7 @@ export default function DrugSearch() {
                              </td>
                              <td className="p-3 text-slate-600">{item.ingredientName || '-'}</td>
                              <td className="p-3">{item.reimbursement || '-'}</td>
-                             <td className="p-3">{item.priceLabel || '-'}</td>
+                             <td className="p-3">{ (item.priceLabel || "-").split("/")[0].trim() }</td>
                           </tr>
                           ))}
                        </tbody>
@@ -208,8 +209,6 @@ export default function DrugSearch() {
                  </h3>
                  {!selectedDrug ? (
                     <div className="text-center py-8 text-slate-500">약제를 먼저 검색하고 선택해주세요.</div>
-                 ) : llmLoading ? (
-                    <div className="text-center py-8 text-slate-500 animate-pulse">실시간 급여 기준 정보를 가져오는 중입니다...</div>
                  ) : (
                     <div className="space-y-4">
                        <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
@@ -218,7 +217,7 @@ export default function DrugSearch() {
                             <span className="text-sm font-bold text-slate-700">{selectedDrug.productName} ({selectedDrug.ingredientName})</span>
                           </div>
                           <div className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
-                            {llmInfo?.chat_reply || '급여 관련 상세 정보가 생성되지 않았습니다.'}
+                            {llmLoading ? '실시간 AI 병합 및 약가/급여 기준 분석 중입니다 (약 3~8초 소요)...' : (llmInfo?.chat_reply || '급여 상세 정보가 생성되지 않았습니다.')}
                           </div>
                        </div>
                        {llmInfo?.blocks?.map((block: any, idx: number) => (
@@ -243,10 +242,9 @@ export default function DrugSearch() {
                  
                  {!selectedDrug ? (
                     <div className="text-center py-8 text-slate-500">약제를 먼저 검색하고 선택해주세요.</div>
-                 ) : llmLoading ? (
-                    <div className="text-center py-8 text-slate-500 animate-pulse">대체 약제 정보를 검색 중입니다...</div>
                  ) : (
                  <div className="overflow-x-auto">
+                    {llmLoading && <div className="p-4 text-center text-blue-500 font-bold animate-pulse">실시간 AI 대체 약제 검색 중...</div>}
                     <table className="w-full text-sm text-left">
                        <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                           <tr>
