@@ -453,13 +453,25 @@ export default function DashboardPage() {
           {view === 'chat' && (
             <>
               {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center w-full  pb-20">
-                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-                    <span className="text-3xl"></span>
+                <div className="h-full flex flex-col items-center justify-center text-center w-full pb-20">
+                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4 text-blue-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                    </svg>
                   </div>
                   <h2 className="text-2xl font-bold text-slate-800 mb-2">무엇을 도와드릴까요, {user.name} 원장님?</h2>
-                  <p className="text-slate-500 text-sm mb-8">환자 증상, X-Ray 사진 판독, 약물 상호작용(DDI), 최신 가이드라인 검색, 초빙 공고 비교 등 전공별 맞춤 정보를 지원합니다.</p>
+                  <p className="text-slate-500 text-sm mb-6">환자 증상, X-Ray 사진 판독, 약물 상호작용(DDI), 최신 가이드라인 검색 등을 지원합니다.</p>
                   
+                  <button 
+                    onClick={() => fileInputRef.current?.click()} 
+                    className="mb-8 flex items-center gap-2 bg-blue-50 text-blue-600 border border-blue-200 px-5 py-2.5 rounded-full hover:bg-blue-100 transition shadow-sm font-medium text-sm"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
+                    </svg>
+                    X-Ray / 검사지 / 이미지 첨부하기
+                  </button>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
                     {suggestions.map((text, i) => (
                       <button key={i} onClick={() => handleSendMessage(text)} className="bg-white border border-slate-200 p-3 rounded-lg text-sm text-left hover:bg-slate-50 hover:border-blue-300 text-slate-700 shadow-sm transition">
@@ -545,13 +557,17 @@ export default function DashboardPage() {
             {attachmentBase64 && (
               <div className="relative inline-block mb-3">
                 <img src={attachmentBase64} alt="preview" className="h-16 w-16 object-cover rounded-lg border border-slate-300 shadow-sm" />
-                <button onClick={() => setAttachmentBase64(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold leading-none"></button>
+                <button onClick={() => setAttachmentBase64(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold leading-none">
+                  &times;
+                </button>
               </div>
             )}
             
             <div className="relative flex items-end gap-2 bg-slate-100 rounded-2xl border border-slate-200 p-2 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 bg-white shadow-inner">
               <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition flex-shrink-0" title="이미지/검사지 첨부">
-                
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
+                </svg>
               </button>
               <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
               
@@ -579,7 +595,11 @@ export default function DashboardPage() {
                 disabled={(!chatInput.trim() && !attachmentBase64) || isThinking}
                 className="p-2.5 flex-shrink-0 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-500 transition shadow-sm"
               >
-                <div className="w-5 h-5 flex items-center justify-center font-bold text-lg"></div>
+                <div className="w-5 h-5 flex items-center justify-center font-bold text-lg">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+                  </svg>
+                </div>
               </button>
             </div>
             <div className="text-center mt-2.5 text-[10px] text-slate-400">
