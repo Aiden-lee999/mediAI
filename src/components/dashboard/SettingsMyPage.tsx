@@ -39,7 +39,7 @@ export default function SettingsMyPage() {
   };
 
   return (
-    <div className="w-full mx-auto space-y-6 animate-fadeIn py-2">
+    <div className="w-full  space-y-6 animate-fadeIn py-2">
       {/* Header */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
          <div>

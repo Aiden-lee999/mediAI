@@ -429,7 +429,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 메인 캔버스 */}
-      <div className="flex-1 flex flex-col w-full mx-auto w-full relative">
+      <div className="flex-1 flex flex-col w-full  w-full relative">
         <header className="bg-white border-b border-slate-200 p-4 flex justify-between items-center shadow-sm z-30">
           <button className="md:hidden p-2 -ml-2 text-slate-600" onClick={() => setSidebarOpen(true)}> 메뉴</button>
           <div>
@@ -453,7 +453,7 @@ export default function DashboardPage() {
           {view === 'chat' && (
             <>
               {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center w-full mx-auto pb-20">
+                <div className="h-full flex flex-col items-center justify-center text-center w-full  pb-20">
                   <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
                     <span className="text-3xl"></span>
                   </div>
@@ -472,7 +472,7 @@ export default function DashboardPage() {
                 <div className="flex flex-col gap-6 pb-24">
                   {messages.map((msg, idx) => (
                     <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[90%] sm:max-w-[85%] rounded-2xl p-4 sm:p-5 shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}`}>
+                      <div className={`w-full max-w-none rounded-2xl p-4 sm:p-5 shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}`}>
                         {msg.role === 'user' ? (
                           <>
                             {msg.image && <img src={msg.image} alt="uploaded" className="w-full w-full rounded-lg mb-3 border border-blue-500" />}

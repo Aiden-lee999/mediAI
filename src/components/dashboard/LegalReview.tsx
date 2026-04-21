@@ -27,7 +27,7 @@ export default function LegalReview() {
   };
 
   return (
-    <div className="w-full mx-auto space-y-6">
+    <div className="w-full  space-y-6">
       {/* 5. 법률검토 (판례중심) */}
       <div className="bg-slate-900 p-6 rounded-xl shadow-lg border border-slate-700">
         <h2 className="text-xl font-extrabold text-white mb-2 flex items-center gap-2">️ 의료법규 및 판례 AI 어시스턴트</h2>

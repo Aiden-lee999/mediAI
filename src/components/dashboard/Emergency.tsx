@@ -44,7 +44,7 @@ export default function Emergency() {
   };
 
   return (
-    <div className="w-full mx-auto space-y-6">
+    <div className="w-full  space-y-6">
       <div className="bg-red-600 text-white p-6 rounded-xl shadow-lg border border-red-700 flex justify-between items-center">
          <div>
             <h2 className="text-2xl font-extrabold mb-1"> 원클릭 응급처치 (ACLS / Anaphylaxis)</h2>

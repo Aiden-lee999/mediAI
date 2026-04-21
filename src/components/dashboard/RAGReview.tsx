@@ -12,7 +12,7 @@ export default function RAGReview() {
   const [query, setQuery] = useState('');
 
   return (
-    <div className="w-full mx-auto flex flex-col md:flex-row gap-6 h-[calc(100vh-150px)]">
+    <div className="w-full  flex flex-col md:flex-row gap-6 h-[calc(100vh-150px)]">
       
       {/* 좌측: 문서 업로드 및 관리 (RAG 소스) */}
       <div className="w-full md:w-1/3 bg-white p-6 rounded-xl shadow-sm border border-slate-200. flex flex-col">

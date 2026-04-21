@@ -39,7 +39,7 @@ export default function TranslateMCA() {
   };
 
   return (
-    <div className="w-full mx-auto space-y-6">
+    <div className="w-full  space-y-6">
       <div className="bg-indigo-600 text-white p-6 rounded-xl shadow-lg border border-indigo-700">
         <h2 className="text-xl font-extrabold mb-2 flex items-center gap-2"> 다국어 진료 어시스턴트 (MCA)</h2>
         <p className="text-indigo-100 text-sm">일반 번역기로는 불가능한 '의학 전문 용어(증상, 통증 양상, 복약지도)'를 외국인 환자의 모국어로 정확하고 쉽게 양방향 통역 및 생성합니다.</p>

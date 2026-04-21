@@ -81,7 +81,7 @@ export default function DrugSearch() {
   };
 
   return (
-    <div className="w-full mx-auto space-y-6">
+    <div className="w-full  space-y-6">
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
         <h2 className="text-xl font-extrabold text-blue-800 mb-2"> 스마트 약제조회 및 DUR 보조</h2>
         <p className="text-sm text-slate-500 mb-6">30만 건의 의약품 데이터베이스를 실시간으로 검색하여 급여 기준, 대체 약제, DUR(병용금기) 정보를 제공합니다.</p>

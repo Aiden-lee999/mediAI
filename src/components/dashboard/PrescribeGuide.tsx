@@ -48,7 +48,7 @@ export default function PrescribeGuide() {
   };
 
   return (
-    <div className="w-full mx-auto space-y-6">
+    <div className="w-full  space-y-6">
       {/* 검색 바 */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
         <h2 className="text-xl font-extrabold text-blue-800 mb-2"> 처방 가이드 및 증례 매칭</h2>
