@@ -80,7 +80,7 @@ export default function DashboardPage() {
   const [opinionText, setOpinionText] = useState('');
 
   // 유저 컨텍스트
-  const [user, setUser] = useState({ name: '김의사', specialty: '내과' });
+  const [user, setUser] = useState({ name: '김의사', specialty: '내과', points: 0 });
 
   // 채팅 상태
   const [chatInput, setChatInput] = useState('');
@@ -108,6 +108,19 @@ export default function DashboardPage() {
      const localLib = JSON.parse(localStorage.getItem('medLibrary') || '[]');
      if (localSessions.length > 0) setSessions(localSessions);
      if (localLib.length > 0) setSavedLibrary(localLib);
+
+     // 서버에서 DB 세션 및 유저 정보(포인트 포함) 가져오기 (동기화)
+     fetch('/api/sessions')
+       .then(r => r.json())
+       .then(data => {
+         if (data.sessions && data.sessions.length > 0) {
+           setSessions(data.sessions);
+         }
+         // 유저 정보 처리
+         if (data.user) {
+           setUser(prev => ({ ...prev, points: data.user.points }));
+         }
+       }).catch(e => console.error('DB 세션 로드 실패:', e));
   }, []);
 
   useEffect(() => {
@@ -215,8 +228,19 @@ export default function DashboardPage() {
          newSessions.unshift({ id: currentSessionId, title: (targetText ? targetText.slice(0, 30) : "새로운 대화"), history: finalizedHistory, date: new Date().toLocaleDateString() });
       }
       setSessions(newSessions);
-      localStorage.setItem('medSessions', JSON.stringify(newSessions));
-      
+      localStorage.setItem('medSessions', JSON.stringify(newSessions)); // 로컬 캐시 유지
+
+      // DB에 세션 저장 및 역사 동기화
+      fetch('/api/sessions', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+            id: currentSessionId,
+            title: targetText ? targetText.slice(0, 30) : "새로운 대화",
+            history: finalizedHistory
+         })
+      }).catch(e => console.error('DB 저장 실패:', e));
+
       // 최신 결과 페이로드 임시 저장 (라이브러리 추가용)
       (window as any).lastResultPayload = currentQueryPayload;
 
@@ -450,6 +474,7 @@ export default function DashboardPage() {
         <div className="mt-4 pt-4 border-t border-slate-700 text-sm">
            <div className="font-bold">{user.name} 원장님</div>
            <div className="text-slate-400 text-xs">{user.specialty} 전문의</div>
+           <div className="text-blue-300 text-xs font-bold mt-1">포인트: {user.points}P</div>
         </div>
       </div>
 
@@ -660,7 +685,27 @@ export default function DashboardPage() {
               </div>
               <div className="p-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
                  <button onClick={() => setOpinionModalOpen(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded">취소</button>
-                 <button onClick={() => { alert('소중한 의견이 등록되었습니다.'); setOpinionModalOpen(false); setOpinionText(''); }} className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded font-bold">의견 등록</button>
+                 <button onClick={async () => { 
+                    if (!opinionText.trim()) return alert('의견을 입력해주세요.');
+                    try {
+                      const res = await fetch('/api/opinions', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ sessionId: currentSessionId, content: opinionText })
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        setUser(prev => ({...prev, points: data.updatedPoints}));
+                        alert(`소중한 의견이 등록되었습니다. (+1 포인트 적립, 현재 ${data.updatedPoints}P)`);
+                      } else {
+                        alert('의견 등록은 완료되었으나 포인트 적립에 오류가 발생했습니다.');
+                      }
+                    } catch(e) {
+                      alert('의견 등록 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+                    }
+                    setOpinionModalOpen(false); 
+                    setOpinionText(''); 
+                 }} className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded font-bold">의견 등록</button>
               </div>
            </div>
         </div>

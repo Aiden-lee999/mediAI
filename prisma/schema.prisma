@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -34,6 +34,7 @@ model User {
   passwordHash  String
   name          String
   role          String             @default("DOCTOR")
+  points        Int                @default(0)
   title         String?
   status        String             @default("PENDING")
   hospitalId    String?
@@ -147,27 +148,27 @@ model MessageTag {
 }
 
 model ReviewWorkflow {
-  id           String   @id @default(uuid())
-  messageId    String   @unique
-  message      Message  @relation(fields: [messageId], references: [id])
-  reviewerId   String?
-  reviewer     User?    @relation("Reviewer", fields: [reviewerId], references: [id])
-  status       String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  version      String   @default("v1.0")
-  reviewNotes  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          String   @id @default(uuid())
+  messageId   String   @unique
+  message     Message  @relation(fields: [messageId], references: [id])
+  reviewerId  String?
+  reviewer    User?    @relation("Reviewer", fields: [reviewerId], references: [id])
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  version     String   @default("v1.0")
+  reviewNotes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model PatientIntake {
-  id        String   @id @default(uuid())
+  id          String   @id @default(uuid())
   patientLang String
   symptom     String
   duration    String
   history     String
   occupation  String?
   summaryChat String?
-  createdAt DateTime @default(now())
+  createdAt   DateTime @default(now())
 }
 
 model ChartRecord {
@@ -205,11 +206,11 @@ model Drug {
   releaseDate    String?
   usageFrequency Int      @default(0)
   rawJson        String?
-  durInfo        String?  // 병용금기, 임부/연령 금기 주의사항 (JSON 배열 or 텍스트)
-  efficacy       String?  // 의약품 효능 및 적응증 (식약처 허가정보 표기)
-  precaution     String?  // 사용상의 주의사항 및 투여기간 등
-  identification String?  // 낱알 식별 정보 (모양, 색상, 마크 등)
-  publicApiDump  String?  // 1~10번 12개 API 전체(DUR, 비급여, 허가, 식별 등) 원천 데이터(Raw XML/JSON) 100% 무손실 통합 보관용 필드
+  durInfo        String? // 병용금기, 임부/연령 금기 주의사항 (JSON 배열 or 텍스트)
+  efficacy       String? // 의약품 효능 및 적응증 (식약처 허가정보 표기)
+  precaution     String? // 사용상의 주의사항 및 투여기간 등
+  identification String? // 낱알 식별 정보 (모양, 색상, 마크 등)
+  publicApiDump  String? // 1~10번 12개 API 전체(DUR, 비급여, 허가, 식별 등) 원천 데이터(Raw XML/JSON) 100% 무손실 통합 보관용 필드
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -220,4 +221,3 @@ model Drug {
   @@index([atcCode])
   @@index([usageFrequency])
 }
-
