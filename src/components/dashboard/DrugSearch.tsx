@@ -111,26 +111,6 @@ export default function DrugSearch() {
     }
   };
 
-  const handleSort = (column: string) => {
-    const newIsAsc = sortCol === column ? !isAsc : true;
-    setIsAsc(newIsAsc);
-    setSortCol(column);
-
-    const sorted = [...searchResults].sort((a, b) => {
-      let valA = a[column] || '';
-      let valB = b[column] || '';
-
-      if (column === 'brandClass') {
-          valA = a.brandClass === '오리지널(대장약)' ? 0 : 1;
-          valB = b.brandClass === '오리지널(대장약)' ? 0 : 1;
-          return newIsAsc ? valA - valB : valB - valA;
-      }
-      return newIsAsc ? String(valA).localeCompare(String(valB)) : String(valB).localeCompare(String(valA));
-    });
-
-    setSearchResults(sorted);
-  };
-
   return (
     <div className="w-full  space-y-6">
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">

@@ -370,7 +370,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-800 font-sans">
+    <div className="flex h-screen bg-slate-50 text-slate-800 font-sans w-full">
       
       {/* 모바일 오버레이 배경 */}
       {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />}
@@ -429,7 +429,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 메인 캔버스 */}
-      <div className="flex-1 flex flex-col w-full  w-full relative">
+      <div className="flex-1 flex flex-col w-full relative">
         <header className="bg-white border-b border-slate-200 p-4 flex justify-between items-center shadow-sm z-30">
           <button className="md:hidden p-2 -ml-2 text-slate-600" onClick={() => setSidebarOpen(true)}> 메뉴</button>
           <div>
