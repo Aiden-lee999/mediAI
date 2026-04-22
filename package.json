@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "sync:batch": "npx --yes tsx scripts/run_sync_batch.ts",
-    "sync:msup-report": "npx --yes tsx scripts/generate_msup_escalation_report.ts --write-md=true"
+    "sync:msup-report": "npx --yes tsx scripts/generate_msup_escalation_report.ts --write-md=true",
+    "sync:easy-localize-merge": "npx --yes tsx scripts/localize_merge_easy_drugs.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
