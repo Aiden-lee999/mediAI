@@ -9,7 +9,9 @@
     "lint": "next lint",
     "sync:batch": "npx --yes tsx scripts/run_sync_batch.ts",
     "sync:msup-report": "npx --yes tsx scripts/generate_msup_escalation_report.ts --write-md=true",
-    "sync:easy-localize-merge": "npx --yes tsx scripts/localize_merge_easy_drugs.ts"
+    "sync:easy-localize-merge": "npx --yes tsx scripts/localize_merge_easy_drugs.ts",
+    "sync:all-localize": "npx --yes tsx scripts/localize_merge_all_public_apis.ts --dump-only",
+    "sync:all-localize-merge": "npx --yes tsx scripts/localize_merge_all_public_apis.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",

@@ -89,8 +89,8 @@ async function fetchAllApiItems(baseUrl: string, operation: string, pageSize: nu
     baseUrl,
     operation,
     query: { numOfRows: pageSize, pageNo: 1 },
-    timeoutMs: 15000,
-    retries: 1,
+    timeoutMs: 30000,
+    retries: 5,
   });
 
   const extractTotalCount = (payload: any) => {
@@ -128,8 +128,8 @@ async function fetchAllApiItems(baseUrl: string, operation: string, pageSize: nu
       baseUrl,
       operation,
       query: { numOfRows: pageSize, pageNo: page },
-      timeoutMs: 15000,
-      retries: 1,
+      timeoutMs: 30000,
+      retries: 5,
     });
 
     const pageItems = extractItems(payload);

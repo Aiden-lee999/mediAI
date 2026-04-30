@@ -1,37 +1,156 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
+const SORT_PREF_KEY = 'drugSearch.sortPreference.v1';
+
+const SORT_OPTIONS = [
+  { value: 'brandClass', label: '구분' },
+  { value: 'productName', label: '제품명' },
+  { value: 'ingredientName', label: '주성분' },
+  { value: 'company', label: '제약사' },
+  { value: 'reimbursement', label: '급여' },
+  { value: 'priceLabel', label: '약가' },
+  { value: 'usageFrequency', label: '처방빈도' },
+] as const;
+
+function loadSortPreference() {
+  if (typeof window === 'undefined') {
+    return { col: 'brandClass', asc: true };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(SORT_PREF_KEY);
+    if (!raw) return { col: 'brandClass', asc: true };
+    const parsed = JSON.parse(raw) as { col?: string; asc?: boolean };
+    return {
+      col: parsed.col || 'brandClass',
+      asc: parsed.asc ?? true,
+    };
+  } catch {
+    return { col: 'brandClass', asc: true };
+  }
+}
+
+function saveSortPreference(col: string, asc: boolean) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(SORT_PREF_KEY, JSON.stringify({ col, asc }));
+}
 
 export default function DrugSearch() {
+  const initialSort = loadSortPreference();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('검색결과');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedDrug, setSelectedDrug] = useState<any>(null);
+  const [resultFilter, setResultFilter] = useState('');
 
   // Sorting state
-  const [sortCol, setSortCol] = useState<string>('brandClass');
-  const [isAsc, setIsAsc] = useState<boolean>(true);
+  const [sortCol, setSortCol] = useState<string>(initialSort.col);
+  const [isAsc, setIsAsc] = useState<boolean>(initialSort.asc);
+
+  const [defaultSortCol, setDefaultSortCol] = useState<string>(initialSort.col);
+  const [defaultSortAsc, setDefaultSortAsc] = useState<boolean>(initialSort.asc);
+
+  const toPriceNumber = (value: string) => {
+    const first = (value || '').split('/')[0] || '';
+    const numeric = first.replace(/[^0-9]/g, '');
+    return numeric ? Number(numeric) : Number.MAX_SAFE_INTEGER;
+  };
 
   const handleSort = (col: string) => {
     const asc = sortCol === col ? !isAsc : true;
     setSortCol(col);
     setIsAsc(asc);
+  };
 
-    const sorted = [...searchResults].sort((a: any, b: any) => {
-      let valA = a[col] || '';
-      let valB = b[col] || '';
+  const handleApplyDefaultSort = () => {
+    setSortCol(defaultSortCol);
+    setIsAsc(defaultSortAsc);
+    saveSortPreference(defaultSortCol, defaultSortAsc);
 
-      if (col === 'brandClass') {
+    fetch('/api/user/preferences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: SORT_PREF_KEY,
+        value: JSON.stringify({ col: defaultSortCol, asc: defaultSortAsc }),
+      }),
+    }).catch(() => {
+      // local preference is already stored; ignore remote save failure
+    });
+  };
+
+  useEffect(() => {
+    let active = true;
+
+    const loadServerPreference = async () => {
+      try {
+        const res = await fetch(`/api/user/preferences?key=${encodeURIComponent(SORT_PREF_KEY)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!active || !data?.value) return;
+
+        const parsed = JSON.parse(data.value) as { col?: string; asc?: boolean };
+        const col = parsed?.col || 'brandClass';
+        const asc = parsed?.asc ?? true;
+
+        setSortCol(col);
+        setIsAsc(asc);
+        setDefaultSortCol(col);
+        setDefaultSortAsc(asc);
+        saveSortPreference(col, asc);
+      } catch {
+        // keep local fallback preference
+      }
+    };
+
+    loadServerPreference();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const visibleResults = useMemo(() => {
+    const filter = resultFilter.trim().toLowerCase();
+    const filtered = !filter
+      ? searchResults
+      : searchResults.filter((row: any) => {
+          const product = (row.productName || '').toLowerCase();
+          const ingredient = (row.ingredientName || '').toLowerCase();
+          const company = (row.company || '').toLowerCase();
+          return product.includes(filter) || ingredient.includes(filter) || company.includes(filter);
+        });
+
+    return [...filtered].sort((a: any, b: any) => {
+      let valA = a[sortCol] || '';
+      let valB = b[sortCol] || '';
+
+      if (sortCol === 'brandClass') {
           valA = a.brandClass === '오리지널(대장약)' ? 0 : 1;
           valB = b.brandClass === '오리지널(대장약)' ? 0 : 1;
-          return asc ? valA - valB : valB - valA;
+            return isAsc ? valA - valB : valB - valA;
+      }
+
+      if (sortCol === 'priceLabel') {
+        const priceA = toPriceNumber(a.priceLabel || '');
+        const priceB = toPriceNumber(b.priceLabel || '');
+        return isAsc ? priceA - priceB : priceB - priceA;
+      }
+
+      if (sortCol === 'usageFrequency') {
+        const freqA = Number(a.usageFrequency || 0);
+        const freqB = Number(b.usageFrequency || 0);
+        return isAsc ? freqA - freqB : freqB - freqA;
       }
       
-      return asc ? String(valA).localeCompare(String(valB)) : String(valB).localeCompare(String(valA));
+      return isAsc
+        ? String(valA).localeCompare(String(valB), 'ko')
+        : String(valB).localeCompare(String(valA), 'ko');
     });
-    setSearchResults(sorted);
-  };
+  }, [searchResults, resultFilter, sortCol, isAsc]);
 
   const [durInfo, setDurInfo] = useState<any>(null);
   const [durLoading, setDurLoading] = useState(false);
@@ -80,7 +199,7 @@ export default function DrugSearch() {
     fetchDUR(drug);
     fetchLLMInfo(drug);
     // DO NOT change activeTab automatically to allow the user to keep viewing search results!
-    setActiveTab('湲됱뿬議고쉶');
+    setActiveTab('급여조회');
   };
 
   const handleSearch = async () => {
@@ -93,14 +212,8 @@ export default function DrugSearch() {
       const data = await res.json();
 
       if (res.ok) {
-        // By default, original first
-        const sorted = (data.items || []).sort((a: any, b: any) => {
-          const aClass = a.brandClass === '오리지널(대장약)' ? 0 : 1;
-          const bClass = b.brandClass === '오리지널(대장약)' ? 0 : 1;
-          if (aClass !== bClass) return aClass - bClass;
-          return b.usageFrequency - a.usageFrequency;
-        });
-        setSearchResults(sorted);
+        setSearchResults(data.items || []);
+        setResultFilter('');
         setActiveTab('검색결과'); // Add a tab for search results
       } else {
         setError(`검색 오류: ${data.message || res.statusText}`);
@@ -160,8 +273,46 @@ export default function DrugSearch() {
             {activeTab === '검색결과' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                  <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                   <span className="text-blue-500"></span> 검색 결과 {searchResults.length > 0 && `(${searchResults.length}건)`}
+                   <span className="text-blue-500"></span> 검색 결과 {searchResults.length > 0 && `(${visibleResults.length}/${searchResults.length}건)`}
                  </h3>
+
+                 <div className="mb-4">
+                   <input
+                     type="text"
+                     className="w-full bg-slate-50 border border-slate-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                     placeholder="검색된 결과 안에서 재검색 (제품명 / 주성분 / 제약사)"
+                     value={resultFilter}
+                     onChange={(e) => setResultFilter(e.target.value)}
+                   />
+                 </div>
+
+                 <div className="mb-4 p-3 border border-slate-200 rounded-lg bg-slate-50 flex flex-wrap items-center gap-2">
+                   <span className="text-xs font-bold text-slate-700">기본 정렬 설정</span>
+                   <select
+                     className="text-xs border border-slate-300 rounded px-2 py-1 bg-white"
+                     value={defaultSortCol}
+                     onChange={(e) => setDefaultSortCol(e.target.value)}
+                   >
+                     {SORT_OPTIONS.map((opt) => (
+                       <option key={opt.value} value={opt.value}>{opt.label}</option>
+                     ))}
+                   </select>
+                   <select
+                     className="text-xs border border-slate-300 rounded px-2 py-1 bg-white"
+                     value={defaultSortAsc ? 'asc' : 'desc'}
+                     onChange={(e) => setDefaultSortAsc(e.target.value === 'asc')}
+                   >
+                     <option value="asc">오름차순</option>
+                     <option value="desc">내림차순</option>
+                   </select>
+                   <button
+                     className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
+                     onClick={handleApplyDefaultSort}
+                   >
+                     저장 및 적용
+                   </button>
+                   <span className="text-[11px] text-slate-500">현재: {SORT_OPTIONS.find((v) => v.value === sortCol)?.label || sortCol} / {isAsc ? '오름차순' : '내림차순'}</span>
+                 </div>
 
                  {loading ? (
                    <div className="text-center py-8 text-slate-500">검색 중입니다...</div>
@@ -173,13 +324,14 @@ export default function DrugSearch() {
                              <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('productName')}>제품명 {sortCol === 'productName' && (isAsc ? '▲' : '▼')}</th>
                              <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('brandClass')}>구분 {sortCol === 'brandClass' && (isAsc ? '▲' : '▼')}</th>
                              <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('ingredientName')}>주성분 {sortCol === 'ingredientName' && (isAsc ? '▲' : '▼')}</th>
+                              <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('company')}>제약사 {sortCol === 'company' && (isAsc ? '▲' : '▼')}</th>
                              <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('reimbursement')}>급여 {sortCol === 'reimbursement' && (isAsc ? '▲' : '▼')}</th>
                              <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('priceLabel')}>약가 {sortCol === 'priceLabel' && (isAsc ? '▲' : '▼')}</th>
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-slate-100">
-                          {searchResults.map((item, idx) => (
-                          <tr key={idx} className={`hover:bg-slate-50 cursor-pointer ${selectedDrug?.productName === item.productName ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`} onClick={() => handleSelectDrug(item)}>
+                            {visibleResults.map((item, idx) => (
+                            <tr key={`${item.standardCode || item.id || idx}_${item.company || ''}`} className={`hover:bg-slate-50 cursor-pointer ${selectedDrug?.productName === item.productName && selectedDrug?.company === item.company ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`} onClick={() => handleSelectDrug(item)}>
                              <td className="p-3 font-[800] text-blue-700 max-w-[120px] sm:max-w-[160px] lg:max-w-[200px] break-words whitespace-normal leading-tight">{item.productName}</td>
                              <td className="p-3 text-xs">
                                <span className={`px-2 py-0.5 rounded-full ${item.brandClass === '오리지널(대장약)' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
@@ -187,6 +339,7 @@ export default function DrugSearch() {
                                </span>
                              </td>
                              <td className="p-3 text-slate-600">{item.ingredientName || '-'}</td>
+                              <td className="p-3 text-slate-700">{item.company || '-'}</td>
                              <td className="p-3">{item.reimbursement || '-'}</td>
                              <td className="p-3">{ (item.priceLabel || "-").split("/")[0].trim() }</td>
                           </tr>

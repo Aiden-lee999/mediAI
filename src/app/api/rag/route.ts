@@ -3,8 +3,30 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+function buildRagMetrics(query: string, sourceCount: number, latencyMs: number) {
+  const evidenceScore = Math.min(100, 50 + sourceCount * 20);
+  const latencyScore = latencyMs <= 3000 ? 100 : latencyMs <= 8000 ? 85 : 65;
+  const relevanceScore = query.trim().length >= 8 ? 85 : 70;
+  const overallScore = Math.round((evidenceScore * 0.5) + (latencyScore * 0.2) + (relevanceScore * 0.3));
+  const grade = overallScore >= 85 ? 'A' : overallScore >= 70 ? 'B' : overallScore >= 55 ? 'C' : 'D';
+
+  return [
+    '---',
+    '### 의사용 객관 지표',
+    '| 지표 | 값 |',
+    '|---|---|',
+    '| 모델 | rag-mock-engine |',
+    `| 응답 지연시간 | ${latencyMs}ms |`,
+    `| 근거 출처 수 | ${sourceCount}개 |`,
+    `| 근거 점수 | ${evidenceScore}점 |`,
+    `| 관련성 점수 | ${relevanceScore}점 |`,
+    `| 종합 점수 | ${overallScore}점 (${grade}) |`,
+  ].join('\n');
+}
+
 export async function POST(request: Request) {
   try {
+    const startedAt = Date.now();
     const { query, sessionId } = await request.json();
 
     // 1. 유저 메시지 저장
@@ -40,7 +62,9 @@ export async function POST(request: Request) {
       }
     ];
 
-    const answerContent = `(RAG 병원 내부지식 기반 답변) 요청하신 "${query}"에 대한 RAG 분석 결과입니다. \n\n[출처 1] ${mockSources[0].title}: ${mockSources[0].snippet}\n[출처 2] ${mockSources[1].title}: ${mockSources[1].snippet}`;
+    const latencyMs = Date.now() - startedAt;
+    const metricsMd = buildRagMetrics(query || '', mockSources.length, latencyMs);
+    const answerContent = `(RAG 병원 내부지식 기반 답변) 요청하신 "${query}"에 대한 RAG 분석 결과입니다. \n\n[출처 1] ${mockSources[0].title}: ${mockSources[0].snippet}\n[출처 2] ${mockSources[1].title}: ${mockSources[1].snippet}\n\n${metricsMd}`;
 
     // 2. 어시스턴트 메시지 저장
     let assistantMessage = null;

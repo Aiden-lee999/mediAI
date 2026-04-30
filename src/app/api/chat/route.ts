@@ -9,6 +9,57 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || 'dummy_key',
 });
 
+function buildClinicalQualityMetrics(input: {
+  query: string;
+  answer: string;
+  sourceCount: number;
+  model: string;
+  latencyMs: number;
+}) {
+  const { query, answer, sourceCount, model, latencyMs } = input;
+  const wantsComparison = query.includes('비교');
+  const checklist = wantsComparison
+    ? ['효능', '부작용', '가격', '주의']
+    : ['근거', '주의'];
+
+  const checklistHit = checklist.filter((k) => answer.includes(k)).length;
+  const checklistScore = Math.round((checklistHit / checklist.length) * 100);
+  const evidenceScore = Math.min(100, 40 + sourceCount * 20);
+  const latencyScore = latencyMs <= 6000 ? 100 : latencyMs <= 12000 ? 80 : 60;
+  const overallScore = Math.round((evidenceScore * 0.45) + (checklistScore * 0.35) + (latencyScore * 0.20));
+
+  const grade = overallScore >= 85 ? 'A' : overallScore >= 70 ? 'B' : overallScore >= 55 ? 'C' : 'D';
+  const reliability = sourceCount >= 2 ? '중간~높음' : sourceCount === 1 ? '중간' : '낮음';
+
+  const markdown = [
+    '---',
+    '### 의사용 객관 지표',
+    '| 지표 | 값 |',
+    '|---|---|',
+    `| 모델 | ${model} |`,
+    `| 추론 지연시간 | ${latencyMs}ms |`,
+    `| 근거 출처 수 | ${sourceCount}개 |`,
+    `| 체크리스트 충족도 | ${checklistHit}/${checklist.length} (${checklistScore}점) |`,
+    `| 근거 점수 | ${evidenceScore}점 |`,
+    `| 종합 점수 | ${overallScore}점 (${grade}) |`,
+    `| 신뢰도 해석 | ${reliability} |`,
+  ].join('\n');
+
+  return {
+    model,
+    latencyMs,
+    sourceCount,
+    checklistHit,
+    checklistTotal: checklist.length,
+    checklistScore,
+    evidenceScore,
+    overallScore,
+    grade,
+    reliability,
+    markdown,
+  };
+}
+
 // Mock Drug API Simulator (To be replaced with real DUR/KIMS API)
 async function fetchDrugInfo(query: string) {
   // Simulate an external API call for medication data
@@ -80,13 +131,27 @@ export async function POST(req: Request) {
       }
 
       // 2-c. Chat Completion Create
+      const llmStart = Date.now();
       const completion = await openai.chat.completions.create({
         model: targetModel,
         messages: messagesForOpenAI,
         temperature: 0.3,
       });
+      const latencyMs = Date.now() - llmStart;
 
       aiContent = completion.choices[0].message.content || '답변을 생성할 수 없습니다.';
+      const metrics = buildClinicalQualityMetrics({
+        query: content,
+        answer: aiContent,
+        sourceCount: sources.length,
+        model: targetModel,
+        latencyMs,
+      });
+      aiContent = `${aiContent}\n\n${metrics.markdown}`;
+      sources.push({
+        title: `객관 지표: ${metrics.overallScore}점(${metrics.grade})`,
+        snippet: `모델=${metrics.model}, 근거=${metrics.sourceCount}개, 체크리스트=${metrics.checklistHit}/${metrics.checklistTotal}, 지연=${metrics.latencyMs}ms`,
+      });
     } else {
       // 3. Fallback Mock Logic (If API key is absent)
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -102,6 +167,19 @@ export async function POST(req: Request) {
         messageType = "general";
         aiContent = "지정하신 증상에 대한 가이드라인 확인 결과, 추가 검사를 요할 수 있습니다. 정상적인 AI 응답을 위해 환경 변수에 OPENAI_API_KEY를 설정해 주세요.";
       }
+
+      const metrics = buildClinicalQualityMetrics({
+        query: content,
+        answer: aiContent,
+        sourceCount: sources.length,
+        model: 'mock-fallback',
+        latencyMs: 1500,
+      });
+      aiContent = `${aiContent}\n\n${metrics.markdown}`;
+      sources.push({
+        title: `객관 지표: ${metrics.overallScore}점(${metrics.grade})`,
+        snippet: `모델=${metrics.model}, 근거=${metrics.sourceCount}개, 체크리스트=${metrics.checklistHit}/${metrics.checklistTotal}`,
+      });
     }
 
     // 4. Save AI Message to DB

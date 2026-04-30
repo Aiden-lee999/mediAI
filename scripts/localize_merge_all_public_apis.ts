@@ -105,6 +105,45 @@ function digits(v: string) {
   return v.replace(/\D/g, '');
 }
 
+function toProductCode(value: string) {
+  const d = digits(value);
+  if (!d) return '';
+  if (d.length === 9) return d;
+  if (d.length === 13 && d.startsWith('880')) return d.slice(3, 12);
+  return '';
+}
+
+function codeAliases(value: string) {
+  const raw = clean(value);
+  const d = digits(raw);
+  const out = new Set<string>();
+  if (raw) out.add(raw);
+  if (d) out.add(d);
+
+  const p = toProductCode(raw);
+  if (p) {
+    out.add(p);
+    out.add(`880${p}`);
+  }
+
+  return Array.from(out).filter(Boolean);
+}
+
+function normalizeReimbursement(value: string | null) {
+  const v = clean(value);
+  if (!v) return null;
+  const u = v.toUpperCase();
+  if (u === 'Y' || u === 'PAY' || u === '급여' || v.includes('급여')) return '급여';
+  if (u === 'N' || u === 'NONPAY' || u === '비급여' || v.includes('비급여')) return '비급여';
+  return null;
+}
+
+function isUnknownReimbursement(value: string | null | undefined) {
+  const v = clean(value);
+  if (!v) return true;
+  return v.includes('급여구분미확인');
+}
+
 function parsePrice(v: string) {
   const n = digits(v);
   return n ? `${n}원` : null;
@@ -116,6 +155,25 @@ function normalizeName(v: string) {
     .replace(/\([^)]*\)/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function hasKorean(v: string | null | undefined) {
+  if (!v) return false;
+  return /[\u3131-\u318E\uAC00-\uD7A3]/.test(v);
+}
+
+// Prefer richer ingredient labels; upgrade when the incoming value is clearly better.
+function shouldUpgradeIngredient(current: string | null, incoming: string | null) {
+  const cur = clean(current);
+  const inc = clean(incoming);
+  if (!inc) return false;
+  if (!cur) return true;
+
+  const curKo = hasKorean(cur);
+  const incKo = hasKorean(inc);
+  if (!curKo && incKo) return true;
+  if (curKo === incKo && inc.length > cur.length) return true;
+  return false;
 }
 
 function pick(item: AnyItem, keys: string[]) {
@@ -170,16 +228,17 @@ function normalizeDrugFromItem(item: AnyItem, serviceName: string, operation: st
   // Use the first code token (STD_CD can be comma-separated)
   const primaryCode = (typeof code === 'string' ? code.split(',')[0].trim() : String(code));
 
-  // Ingredient name: permit → DUR → component detail → bundle
+  // Ingredient name: 한글 먼저, 영문은 대체재 (아세트아미노펜처럼 한글 성분명으로 검색 가능하게)
   const ingredientName =
     pick(item, [
-      'ITEM_INGR_NAME',     // 허가정보: "Glucose/Sodium Chloride"
-      'INGR_NAME',          // DUR: "아미노필린"
-      'MTRAL_NM',           // 성분상세: "포도당"
-      'MAIN_INGR_ENG',      // 성분상세 / DUR 영문 성분
-      'MAIN_INGR',          // DUR: "[M223100]아미노필린수화물"
-      'trustMainingr',      // 묶음: "디클로페낙나트륨"
-      'MATERIAL_NAME', 'materialName', 'MAIN_ITEM_INGR', 'mainIngr',
+      'INGR_NAME',          // 한글 DUR: "아미노필린"
+      'MTRAL_NM',           // 한글 성분상세: "포도당"
+      'MAIN_INGR',          // 한글 DUR: "[M223100]아미노필린수화물"
+      'trustMainingr',      // 한글 묶음: "디클로페낙나트륨"
+      'MATERIAL_NAME',      // 한글 대체
+      'ITEM_INGR_NAME',     // 영문 허가정보: "Glucose/Sodium Chloride"
+      'MAIN_INGR_ENG',      // 영문 성분상세
+      'materialName', 'MAIN_ITEM_INGR', 'mainIngr',
     ]) || null;
 
   const company = pick(item, [
@@ -196,7 +255,7 @@ function normalizeDrugFromItem(item: AnyItem, serviceName: string, operation: st
   const priceLabel = parsePrice(
     pick(item, ['maxAmt', 'amt', 'price', 'dgamt', 'upprAmt', 'ceilAmt']) || '',
   );
-  const reimbursement = pick(item, ['payYn', 'reim', '급여구분']) || null;
+  const reimbursement = normalizeReimbursement(pick(item, ['payYn', 'reim', '급여구분']) || null);
 
   // type: ETC_OTC_NAME comes from DUR + identification, SPCLTY_PBLC from permit
   const type = pick(item, [
@@ -239,8 +298,8 @@ async function localizeEndpoint(serviceName: string, baseUrl: string, operation:
     baseUrl,
     operation,
     query: { numOfRows: pageSize, pageNo: 1 },
-    timeoutMs: 15000,
-    retries: 1,
+    timeoutMs: 30000,
+    retries: 5,
   });
 
   const totalCount = extractTotalCount(first);
@@ -253,8 +312,8 @@ async function localizeEndpoint(serviceName: string, baseUrl: string, operation:
       baseUrl,
       operation,
       query: { numOfRows: pageSize, pageNo: page },
-      timeoutMs: 15000,
-      retries: 1,
+      timeoutMs: 30000,
+      retries: 5,
     });
 
     const pageItems = extractItems(payload);
@@ -279,15 +338,6 @@ async function localizeEndpoint(serviceName: string, baseUrl: string, operation:
     filePath,
     items,
   };
-}
-
-function safeParse(value: string | null | undefined) {
-  if (!value) return {} as Record<string, unknown>;
-  try {
-    return JSON.parse(value) as Record<string, unknown>;
-  } catch {
-    return {} as Record<string, unknown>;
-  }
 }
 
 // rawJson dump functions removed — we only enrich fields, not accumulate raw API payloads into existing rows
@@ -412,8 +462,20 @@ async function main() {
   for (const row of existing) {
     const s = clean(row.standardCode);
     const i = clean(row.insuranceCode);
-    if (s) byCode.set(digits(s) || s, row);
-    if (i) byCode.set(digits(i) || i, row);
+
+    for (const alias of codeAliases(s)) {
+      byCode.set(alias, row);
+    }
+
+    if (i) {
+      const tokens = i.split(',').map((v) => v.trim()).filter(Boolean);
+      for (const token of tokens) {
+        for (const alias of codeAliases(token)) {
+          byCode.set(alias, row);
+        }
+      }
+    }
+
     const nc = `${normalizeName(row.productName).toLowerCase()}|${clean(row.company).toLowerCase()}`;
     byNameCompany.set(nc, row);
   }
@@ -433,8 +495,9 @@ async function main() {
 
   for (const item of normalized) {
     const c = digits(item.code) || item.code;
+    const aliases = codeAliases(c);
     const nc = `${item.productName.toLowerCase()}|${clean(item.company).toLowerCase()}`;
-    const row = byCode.get(c) || byNameCompany.get(nc);
+    const row = aliases.map((x) => byCode.get(x)).find(Boolean) || byNameCompany.get(nc);
 
     if (!row) {
       const existingCreate = createPlans.get(c);
@@ -482,10 +545,14 @@ async function main() {
       updatePlans.set(row.id, plan);
     }
 
-    if (!plan.ingredientName && item.ingredientName) plan.ingredientName = item.ingredientName;
+    if (shouldUpgradeIngredient(plan.ingredientName, item.ingredientName)) {
+      plan.ingredientName = item.ingredientName;
+    }
     if (!plan.atcCode && item.atcCode) plan.atcCode = item.atcCode;
     if (!plan.priceLabel && item.priceLabel) plan.priceLabel = item.priceLabel;
-    if (!plan.reimbursement && item.reimbursement) plan.reimbursement = item.reimbursement;
+    if ((isUnknownReimbursement(plan.reimbursement) || !plan.reimbursement) && item.reimbursement) {
+      plan.reimbursement = normalizeReimbursement(item.reimbursement);
+    }
     if (!plan.type && item.type) plan.type = item.type;
     if (!plan.releaseDate && item.releaseDate) plan.releaseDate = item.releaseDate;
 
@@ -501,7 +568,7 @@ async function main() {
     .map((plan) => {
     const patch: Record<string, unknown> = {};
 
-    if (!plan.row.ingredientName && plan.ingredientName) {
+    if (clean(plan.ingredientName) && clean(plan.ingredientName) !== clean(plan.row.ingredientName)) {
       patch.ingredientName = plan.ingredientName;
       enrichedIngredient += 1;
     }
@@ -513,7 +580,7 @@ async function main() {
       patch.priceLabel = plan.priceLabel;
       enrichedPrice += 1;
     }
-    if (!plan.row.reimbursement && plan.reimbursement) {
+    if ((isUnknownReimbursement(plan.row.reimbursement) || !plan.row.reimbursement) && plan.reimbursement) {
       patch.reimbursement = plan.reimbursement;
       enrichedReimbursement += 1;
     }

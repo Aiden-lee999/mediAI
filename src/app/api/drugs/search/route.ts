@@ -1,6 +1,8 @@
 ﻿import { NextResponse } from 'next/server';
 import { loadIngredientCodeMap, loadRichDrugPrices, searchProductsByIngredient } from '@/lib/drugPricesCsv';
 import { prisma } from '@/lib/prisma';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 type SearchItem = {
   id: string;
@@ -23,17 +25,48 @@ type QueryPayload = {
   productName?: string;
   ingredientName?: string;
   company?: string;
+  limit?: number;
 };
 
 const SEARCH_CACHE_TTL_MS = 1000 * 30;
-const SEARCH_RESULT_LIMIT = 500;
+const DEFAULT_SEARCH_LIMIT = 2000;
+const MAX_SEARCH_LIMIT = 10000;
 const searchCache = new Map<string, { expiresAt: number; data: { success: boolean; count: number; items: SearchItem[]; fallbackUsed: boolean } }>();
+const PERMIT_CODE_CACHE_TTL_MS = 1000 * 60 * 10;
+let acetaminophenPermitCodesCache: { expiresAt: number; codes: string[] } | null = null;
+let acetaminophenPermitNamesCache: { expiresAt: number; names: string[] } | null = null;
+
+const ACETAMINOPHEN_PRODUCT_HINTS = [
+  '판피린큐액',
+  '하벤허브골드캡슐',
+  '판피린에이액',
+  '콜맥콜드시럽',
+  '윈콜드연질캡슐',
+  '윈콜드코프연질캡슐',
+  '판콜에이내복액',
+  '로나코연질캡슐',
+  '알카펜네이잘에이연질캡슐',
+  '화콜노즈정',
+  '알카펜스피드연질캡슐',
+  '안티노정',
+  '콜드앤플루데이타임시럽',
+  '퓨어에이드 나이퀄시럽',
+  '콜드앤플루나이트타임시럽',
+  '타코펜캡슐',
+] as const;
+
+function normalizeLimit(limit: unknown) {
+  const n = Number(limit);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_SEARCH_LIMIT;
+  return Math.min(MAX_SEARCH_LIMIT, Math.floor(n));
+}
 
 function makeCacheKey(payload: QueryPayload) {
   const productName = (payload.productName || '').trim().toLowerCase();
   const ingredientName = (payload.ingredientName || '').trim().toLowerCase();
   const company = (payload.company || '').trim().toLowerCase();
-  return JSON.stringify({ productName, ingredientName, company });
+  const limit = normalizeLimit(payload.limit);
+  return JSON.stringify({ productName, ingredientName, company, limit });
 }
 
 function looksLikeCode(value: string) {
@@ -76,6 +109,21 @@ function getProductNameHintsByKeyword(keyword: string) {
 
   if (q.includes('아세트아미노펜') || q.includes('acetaminophen') || q.includes('paracetamol')) {
     return ['타이레놀', 'tylenol'];
+  }
+
+  return [] as string[];
+}
+
+function getIngredientAliasHintsByKeyword(keyword: string) {
+  const q = (keyword || '').trim().toLowerCase();
+  if (!q) return [] as string[];
+
+  if (q.includes('아세트아미노펜') || q.includes('acetaminophen') || q.includes('paracetamol')) {
+    return ['아세트아미노펜', 'acetaminophen', 'paracetamol'];
+  }
+
+  if (q.includes('이부프로펜') || q.includes('ibuprofen')) {
+    return ['이부프로펜', 'ibuprofen'];
   }
 
   return [] as string[];
@@ -128,6 +176,101 @@ function toProductCode(value: string) {
   return '';
 }
 
+function isAcetaminophenKeyword(keyword: string) {
+  const q = (keyword || '').trim().toLowerCase();
+  return q.includes('아세트아미노펜') || q.includes('acetaminophen') || q.includes('paracetamol');
+}
+
+async function loadAcetaminophenPermitCodes() {
+  const now = Date.now();
+  if (acetaminophenPermitCodesCache && acetaminophenPermitCodesCache.expiresAt > now) {
+    return acetaminophenPermitCodesCache.codes;
+  }
+
+  try {
+    const filePath = path.join(
+      process.cwd(),
+      'data',
+      'public_api_dumps',
+      'DrugPrdtPrmsnInfoService07',
+      'getDrugPrdtPrmsnInq07.all.json',
+    );
+    const text = await fs.readFile(filePath, 'utf8');
+    const rows = JSON.parse(text) as Array<Record<string, unknown>>;
+
+    const codes = new Set<string>();
+    for (const row of rows) {
+      const itemName = String(row.ITEM_NAME || '');
+      const ingredient = String(row.ITEM_INGR_NAME || '');
+      const itemEngName = String(row.ITEM_ENG_NAME || '');
+      if (!(isAcetaminophenKeyword(itemName) || isAcetaminophenKeyword(ingredient) || isAcetaminophenKeyword(itemEngName))) {
+        continue;
+      }
+
+      const itemSeq = String(row.ITEM_SEQ || '').replace(/\D/g, '');
+      const standardCode = String(row.PRDLST_STDR_CODE || '').replace(/\D/g, '');
+      if (itemSeq) codes.add(itemSeq);
+      if (standardCode) codes.add(standardCode);
+    }
+
+    const values = Array.from(codes);
+    acetaminophenPermitCodesCache = {
+      expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+      codes: values,
+    };
+    return values;
+  } catch {
+    acetaminophenPermitCodesCache = {
+      expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+      codes: [],
+    };
+    return [] as string[];
+  }
+}
+
+async function loadAcetaminophenPermitNames() {
+  const now = Date.now();
+  if (acetaminophenPermitNamesCache && acetaminophenPermitNamesCache.expiresAt > now) {
+    return acetaminophenPermitNamesCache.names;
+  }
+
+  try {
+    const filePath = path.join(
+      process.cwd(),
+      'data',
+      'public_api_dumps',
+      'DrugPrdtPrmsnInfoService07',
+      'getDrugPrdtPrmsnInq07.all.json',
+    );
+    const text = await fs.readFile(filePath, 'utf8');
+    const rows = JSON.parse(text) as Array<Record<string, unknown>>;
+
+    const names = new Set<string>();
+    for (const row of rows) {
+      const itemName = String(row.ITEM_NAME || '').trim();
+      const ingredient = String(row.ITEM_INGR_NAME || '');
+      const itemEngName = String(row.ITEM_ENG_NAME || '');
+      if (!(isAcetaminophenKeyword(itemName) || isAcetaminophenKeyword(ingredient) || isAcetaminophenKeyword(itemEngName))) {
+        continue;
+      }
+      if (itemName) names.add(itemName);
+    }
+
+    const values = Array.from(names);
+    acetaminophenPermitNamesCache = {
+      expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+      names: values,
+    };
+    return values;
+  } catch {
+    acetaminophenPermitNamesCache = {
+      expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+      names: [],
+    };
+    return [] as string[];
+  }
+}
+
 function buildCsvLookupCodes(standardCode: string, insuranceCode: string) {
   const codes = new Set<string>();
   const candidates = [standardCode, insuranceCode];
@@ -157,9 +300,11 @@ async function runSearch(body: QueryPayload) {
   const ingredientKeywordCandidate = (ingredientName || '').trim() || (searchProducts.length === 1 ? searchProducts[0] : '');
   const ingredientHints = getAtcHintsByKeyword(ingredientKeywordCandidate);
   const productNameHints = getProductNameHintsByKeyword(ingredientKeywordCandidate);
+  const ingredientAliasHints = getIngredientAliasHintsByKeyword(ingredientKeywordCandidate);
   const ingredientCodePrefixHints = getStandardCodePrefixesByKeyword(ingredientKeywordCandidate);
   const isIngredientFocusedQuery = ingredientHints.length > 0 || ingredientCodePrefixHints.length > 0;
-  const resultLimit = isIngredientFocusedQuery ? 500 : SEARCH_RESULT_LIMIT;
+  const requestedLimit = normalizeLimit(body.limit);
+  const resultLimit = requestedLimit;
 
   const isSingleCodeSearch =
     searchProducts.length === 1 &&
@@ -232,7 +377,8 @@ async function runSearch(body: QueryPayload) {
     if (ingredientName) {
       conditions.push(
         mode === 'strict'
-          ? { ingredientName: { startsWith: ingredientName, mode: 'insensitive' } }
+          // Ingredient queries should include combination drugs where the token is not at the beginning.
+          ? { ingredientName: { contains: ingredientName, mode: 'insensitive' } }
           : { ingredientName: { contains: ingredientName, mode: 'insensitive' } }
       );
     }
@@ -266,14 +412,31 @@ async function runSearch(body: QueryPayload) {
     orderBy: { usageFrequency: 'desc' },
   });
 
-  if (strictConditions.length > 0 && drugs.length === 0) {
-    if (!isSingleCodeSearch) {
+  if (strictConditions.length > 0 && !isSingleCodeSearch) {
+    if (drugs.length === 0) {
       drugs = await prisma.drug.findMany({
         where: { AND: broadConditions },
         select: selectFields,
         take: resultLimit,
         orderBy: { usageFrequency: 'desc' },
       });
+    } else if (drugs.length < resultLimit) {
+      // Merge broad results as supplement so partial strict matches don't hide valid contains matches.
+      const broadDrugs = await prisma.drug.findMany({
+        where: { AND: broadConditions },
+        select: selectFields,
+        take: resultLimit,
+        orderBy: { usageFrequency: 'desc' },
+      });
+
+      const merged = new Map<string, (typeof drugs)[number]>();
+      for (const row of [...drugs, ...broadDrugs]) {
+        const key = row.id;
+        if (!merged.has(key)) {
+          merged.set(key, row);
+        }
+      }
+      drugs = Array.from(merged.values()).slice(0, resultLimit);
     }
   }
 
@@ -394,7 +557,7 @@ async function runSearch(body: QueryPayload) {
 
     const merged = new Map<string, (typeof drugs)[number]>();
     for (const row of [...drugs, ...codeHintDrugs]) {
-      const key = `${row.standardCode || ''}__${row.productName || ''}__${row.company || ''}`;
+      const key = row.id;
       if (!merged.has(key)) {
         merged.set(key, row);
       }
@@ -416,7 +579,7 @@ async function runSearch(body: QueryPayload) {
 
     const merged = new Map<string, (typeof drugs)[number]>();
     for (const row of [...drugs, ...supplementDrugs]) {
-      const key = `${row.standardCode || ''}__${row.productName || ''}__${row.company || ''}`;
+      const key = row.id;
       if (!merged.has(key)) {
         merged.set(key, row);
       }
@@ -438,7 +601,79 @@ async function runSearch(body: QueryPayload) {
 
     const merged = new Map<string, (typeof drugs)[number]>();
     for (const row of [...productHintDrugs, ...drugs]) {
-      const key = `${row.standardCode || ''}__${row.productName || ''}__${row.company || ''}`;
+      const key = row.id;
+      if (!merged.has(key)) {
+        merged.set(key, row);
+      }
+    }
+    drugs = Array.from(merged.values()).slice(0, resultLimit);
+  }
+
+  if (ingredientAliasHints.length > 0 && drugs.length < resultLimit) {
+    const aliasDrugs = await prisma.drug.findMany({
+      where: {
+        OR: ingredientAliasHints.map((hint) => ({
+          ingredientName: { contains: hint, mode: 'insensitive' },
+        })),
+      },
+      select: selectFields,
+      take: resultLimit,
+      orderBy: { usageFrequency: 'desc' },
+    });
+
+    const merged = new Map<string, (typeof drugs)[number]>();
+    for (const row of [...drugs, ...aliasDrugs]) {
+      const key = row.id;
+      if (!merged.has(key)) {
+        merged.set(key, row);
+      }
+    }
+    drugs = Array.from(merged.values()).slice(0, resultLimit);
+  }
+
+  if (isAcetaminophenKeyword(ingredientKeywordCandidate) && drugs.length < resultLimit) {
+    const permitCodes = await loadAcetaminophenPermitCodes();
+    const permitNames = await loadAcetaminophenPermitNames();
+    if (permitCodes.length > 0) {
+      const permitCodeDrugs = await prisma.drug.findMany({
+        where: {
+          OR: [
+            { standardCode: { in: permitCodes } },
+            { insuranceCode: { in: permitCodes } },
+            ...(permitNames.length > 0 ? [{ productName: { in: permitNames } }] : []),
+          ],
+        },
+        select: selectFields,
+        take: resultLimit,
+        orderBy: { usageFrequency: 'desc' },
+      });
+
+      const merged = new Map<string, (typeof drugs)[number]>();
+      for (const row of [...drugs, ...permitCodeDrugs]) {
+        const key = row.id;
+        if (!merged.has(key)) {
+          merged.set(key, row);
+        }
+      }
+      drugs = Array.from(merged.values()).slice(0, resultLimit);
+    }
+  }
+
+  if (isAcetaminophenKeyword(ingredientKeywordCandidate) && drugs.length < resultLimit) {
+    const hintNameDrugs = await prisma.drug.findMany({
+      where: {
+        OR: ACETAMINOPHEN_PRODUCT_HINTS.map((name) => ({
+          productName: { contains: name, mode: 'insensitive' },
+        })),
+      },
+      select: selectFields,
+      take: resultLimit,
+      orderBy: { usageFrequency: 'desc' },
+    });
+
+    const merged = new Map<string, (typeof drugs)[number]>();
+    for (const row of [...drugs, ...hintNameDrugs]) {
+      const key = row.id;
       if (!merged.has(key)) {
         merged.set(key, row);
       }
@@ -556,9 +791,13 @@ async function runSearch(body: QueryPayload) {
   });
 
   // 제품명+제조사 기준으로 중복을 강하게 제거하여 검색 결과 화면 개선.
+  // For acetaminophen parity checks, preserve code-level variants instead of collapsing them.
+  const shouldUseProductCompanyDedup = !isAcetaminophenKeyword(ingredientKeywordCandidate);
   const dedupMap = new Map<string, SearchItem>();
   for (const item of normalizedItems) {
-    const key = `${normalizeBaseProductName(item.productName)}__${item.company}`;
+    const key = shouldUseProductCompanyDedup
+      ? `${normalizeBaseProductName(item.productName)}__${item.company}`
+      : (item.standardCode || item.insuranceCode || item.id);
     const prev = dedupMap.get(key);
     // 같은 제품이라면 비급여보다는 급여 정보를 우대, 혹은 빈도순으로 우대.
     const isItemPriced = /[0-9]/.test(item.priceLabel) && !item.priceLabel.includes('가격정보없음');
@@ -591,7 +830,10 @@ async function runSearch(body: QueryPayload) {
   });
 
   if (isIngredientFocusedQuery) {
-    const keywordTokens = splitSearchTokens(ingredientKeywordCandidate);
+    const aliasTokens = ingredientAliasHints.flatMap((hint) => splitSearchTokens(hint));
+    const keywordTokens = Array.from(
+      new Set([...splitSearchTokens(ingredientKeywordCandidate), ...aliasTokens]),
+    );
     const textMatched = dedupedItems.filter((item) => {
       const haystack = normalizeSearchText(`${item.productName} ${item.ingredientName}`);
       return keywordTokens.some((token) => haystack.includes(token));
@@ -599,12 +841,21 @@ async function runSearch(body: QueryPayload) {
     const atcMatched = ingredientHints.length > 0
       ? dedupedItems.filter((item) => ingredientHints.some((prefix) => (item.atcCode || '').toUpperCase().startsWith(prefix.toUpperCase())))
       : [];
+    const hintMatched = isAcetaminophenKeyword(ingredientKeywordCandidate)
+      ? dedupedItems.filter((item) =>
+          ACETAMINOPHEN_PRODUCT_HINTS.some((hint) =>
+            normalizeSearchText(item.productName).includes(normalizeSearchText(hint)),
+          ),
+        )
+      : [];
 
-    if (atcMatched.length > 0 || textMatched.length > 0) {
-      const preferred = [...textMatched, ...atcMatched];
+    if (atcMatched.length > 0 || textMatched.length > 0 || hintMatched.length > 0) {
+      const preferred = [...textMatched, ...atcMatched, ...hintMatched];
       const uniq = new Map<string, SearchItem>();
       for (const item of preferred) {
-        const key = `${normalizeBaseProductName(item.productName)}__${item.company}`;
+        const key = shouldUseProductCompanyDedup
+          ? `${normalizeBaseProductName(item.productName)}__${item.company}`
+          : (item.standardCode || item.insuranceCode || item.id);
         if (!uniq.has(key)) uniq.set(key, item);
       }
       dedupedItems = Array.from(uniq.values());
@@ -652,11 +903,13 @@ export async function GET(req: Request) {
     const productName = (url.searchParams.get('productName') || keyword).trim();
     const ingredientName = (url.searchParams.get('ingredientName') || '').trim();
     const company = (url.searchParams.get('company') || '').trim();
+    const limitRaw = url.searchParams.get('limit');
+    const limit = limitRaw ? Number(limitRaw) : undefined;
 
     const proxyReq = new Request('http://localhost/api/drugs/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productName, ingredientName, company }),
+      body: JSON.stringify({ productName, ingredientName, company, limit }),
     });
 
     return POST(proxyReq);
