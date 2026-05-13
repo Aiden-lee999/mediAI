@@ -1,0 +1,328 @@
+{
+  "generatedAt": "2026-05-04T07:35:02.625Z",
+  "baseUrl": "https://mediai-gules.vercel.app",
+  "limit": 20,
+  "results": [
+    {
+      "id": "31dbcccf-bc47-4d16-b07f-0a9f903b7396",
+      "productName": "숙주: Saccharomyces cerevisiae AB110)/불활화백일해균(백일해균 262",
+      "usageFrequency": 0,
+      "detailScore": 27,
+      "durScore": 0,
+      "totalScore": 18,
+      "detailIssues": [
+        "kimsClass 누락",
+        "atcCode 누락",
+        "효능효과 비어 있음",
+        "용법용량 비어 있음",
+        "주의사항 비어 있음"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "bab10fb9-84fe-445d-864b-1355c64e8b1f",
+      "productName": "시트르산수화물",
+      "usageFrequency": 0,
+      "detailScore": 27,
+      "durScore": 0,
+      "totalScore": 18,
+      "detailIssues": [
+        "kimsClass 누락",
+        "atcCode 누락",
+        "효능효과 비어 있음",
+        "용법용량 비어 있음",
+        "주의사항 비어 있음"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "2b86b0df-d7c3-417f-b15a-266400557b2c",
+      "productName": "시트르산수화물",
+      "usageFrequency": 0,
+      "detailScore": 27,
+      "durScore": 0,
+      "totalScore": 18,
+      "detailIssues": [
+        "kimsClass 누락",
+        "atcCode 누락",
+        "효능효과 비어 있음",
+        "용법용량 비어 있음",
+        "주의사항 비어 있음"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "cf4f6928-e2b7-4f95-9939-66f547c1af36",
+      "productName": "인스타코트유니버살",
+      "usageFrequency": 0,
+      "detailScore": 22,
+      "durScore": 0,
+      "totalScore": 14,
+      "detailIssues": [
+        "ingredientContent 누락",
+        "kimsClass 누락",
+        "atcCode 누락",
+        "효능효과 비어 있음",
+        "용법용량 비어 있음",
+        "주의사항 비어 있음"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "861d29fe-563b-4b92-b413-6272b8989bf5",
+      "productName": "린트포",
+      "usageFrequency": 0,
+      "detailScore": 27,
+      "durScore": 0,
+      "totalScore": 18,
+      "detailIssues": [
+        "kimsClass 누락",
+        "atcCode 누락",
+        "효능효과 비어 있음",
+        "용법용량 비어 있음",
+        "주의사항 비어 있음"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "2f56432c-4387-438c-bca6-4e65eb8a451f",
+      "productName": "Nasal Spray Extra Moisturizing,(주)그린제약,Greenpharmaceutical Co.",
+      "usageFrequency": 0,
+      "detailScore": 73,
+      "durScore": 0,
+      "totalScore": 47,
+      "detailIssues": [
+        "atcCode 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "662b9a6e-fef8-4183-aa0e-9f415db35bed",
+      "productName": "삐콤씨액티브정",
+      "usageFrequency": 0,
+      "detailScore": 76,
+      "durScore": 0,
+      "totalScore": 49,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "46301f17-7611-4462-ac5f-b012ab321643",
+      "productName": "비나플러스연질캡슐",
+      "usageFrequency": 0,
+      "detailScore": 76,
+      "durScore": 0,
+      "totalScore": 49,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "19d3d0bb-ac11-46b1-b4b1-0bd5fd040b02",
+      "productName": "마그비감마연질캡슐",
+      "usageFrequency": 0,
+      "detailScore": 76,
+      "durScore": 0,
+      "totalScore": 49,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "76108449-5d3c-44ea-9ebb-38ce6381521e",
+      "productName": "레티몰액(시트룰린말산염)",
+      "usageFrequency": 0,
+      "detailScore": 73,
+      "durScore": 0,
+      "totalScore": 47,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "c2e755ce-abfc-4461-8d73-8d2e23055297",
+      "productName": "타바자겔",
+      "usageFrequency": 0,
+      "detailScore": 73,
+      "durScore": 0,
+      "totalScore": 47,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "4ba01e9c-2209-4a58-aee9-60c06e1311a2",
+      "productName": "큐앤큐헥시코올거즈액",
+      "usageFrequency": 0,
+      "detailScore": 70,
+      "durScore": 0,
+      "totalScore": 46,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "407f7104-359a-4d50-977b-a93e52252ad9",
+      "productName": "본투본연질캡슐",
+      "usageFrequency": 0,
+      "detailScore": 73,
+      "durScore": 0,
+      "totalScore": 47,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "9d360204-f3db-4816-b257-f223332d1266",
+      "productName": "나프젠크림(나프티핀염산염)",
+      "usageFrequency": 0,
+      "detailScore": 76,
+      "durScore": 0,
+      "totalScore": 49,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "dc6bb7db-b42c-47cb-a332-207814a7d45f",
+      "productName": "두피나액",
+      "usageFrequency": 0,
+      "detailScore": 70,
+      "durScore": 0,
+      "totalScore": 46,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "a71a6b4a-345e-42ff-aecb-f9caa6f85552",
+      "productName": "로이코비에스액",
+      "usageFrequency": 0,
+      "detailScore": 79,
+      "durScore": 0,
+      "totalScore": 51,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "75899268-608b-456f-86bf-6f7072b2d35f",
+      "productName": "화콜씨코프연질캡슐",
+      "usageFrequency": 0,
+      "detailScore": 76,
+      "durScore": 0,
+      "totalScore": 49,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "a290b497-77d2-4e65-a012-6daa489bbd46",
+      "productName": "제노타에이캡슐",
+      "usageFrequency": 0,
+      "detailScore": 73,
+      "durScore": 0,
+      "totalScore": 47,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "17e39982-de02-4c29-825b-7a16e5bb627a",
+      "productName": "프레시뷰베타점안액",
+      "usageFrequency": 0,
+      "detailScore": 70,
+      "durScore": 0,
+      "totalScore": 46,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "2e28f498-d69b-40c7-99c6-bff2e50e92bd",
+      "productName": "테라쿨크림",
+      "usageFrequency": 0,
+      "detailScore": 70,
+      "durScore": 0,
+      "totalScore": 46,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    }
+  ]
+}

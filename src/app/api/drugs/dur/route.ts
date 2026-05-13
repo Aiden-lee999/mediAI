@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { callPublicDrugApi, extractItems } from '@/lib/publicDrugApiClient';
 import { PUBLIC_DRUG_API_ENDPOINTS } from '@/lib/publicDrugApiCatalog';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -23,6 +24,19 @@ type DurSection = {
   operation: string;
 };
 
+type DurEntry = {
+  productName: string;
+  ingredientName: string;
+  caution: string;
+  contraDrug: string;
+  ageInfo: string;
+  pregnantInfo: string;
+  summary: string;
+  relevanceScore: number;
+  relevanceReason: string;
+  raw: any;
+};
+
 const DUR_SECTIONS: DurSection[] = [
   { key: 'usjnt', title: '병용금기', operation: '/getUsjntTabooInfoList03' },
   { key: 'spcify', title: '특정연령대금기', operation: '/getSpcifyAgrdeTabooInfoList03' },
@@ -30,7 +44,7 @@ const DUR_SECTIONS: DurSection[] = [
   { key: 'cpcty', title: '용량주의', operation: '/getCpctyAtentInfoList03' },
   { key: 'mdctn', title: '투여기간주의', operation: '/getMdctnPdAtentInfoList03' },
   { key: 'odsn', title: '노인주의', operation: '/getOdsnAtentInfoList03' },
-  { key: 'efcy', title: '효능군중복주의', operation: '/getEfcyDpcltInfoList03' },
+  { key: 'efcy', title: '효능군중복주의', operation: '/getEfcyDplctInfoList03' },
 ];
 
 function pick(item: any, keys: string[]) {
@@ -39,6 +53,53 @@ function pick(item: any, keys: string[]) {
     if (typeof value === 'string' && value.trim()) return value.trim();
   }
   return '';
+}
+
+function normalizeLine(value: string) {
+  return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+function isMeaningful(value: string) {
+  const clean = normalizeLine(value).toLowerCase();
+  if (!clean) return false;
+  return !['-', 'null', 'undefined', 'nan', '없음', '해당없음', '데이터없음'].includes(clean);
+}
+
+function parseDurInfoText(raw: string | null | undefined): string[] {
+  const text = (raw || '').trim();
+  if (!text) return [];
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => {
+          if (typeof item === 'string') return normalizeLine(item);
+          if (item && typeof item === 'object') {
+            return normalizeLine(
+              [
+                (item as any).title,
+                (item as any).reason,
+                (item as any).caution,
+                (item as any).summary,
+                (item as any).content,
+              ]
+                .filter(Boolean)
+                .join(' / ')
+            );
+          }
+          return '';
+        })
+        .filter(isMeaningful);
+    }
+  } catch {
+    // fall through plain text parsing
+  }
+
+  return text
+    .split(/\r?\n|;|\|/)
+    .map((line) => normalizeLine(line))
+    .filter(isMeaningful);
 }
 
 function toNumber(value: unknown) {
@@ -177,17 +238,32 @@ export async function POST(req: Request) {
         };
       }
 
-      const items = extractItems(result.value).map((item) => ({
-        productName: pick(item, ['itemName', 'ITEM_NAME', '품목명']),
-        ingredientName: pick(item, ['ingrName', 'MAIN_INGR', 'mainIngr', '성분명']),
-        caution: pick(item, ['prohbtContent', 'ATPN_QESITM', '주의사항', 'mixProhbtCn']),
-        contraDrug: pick(item, ['mixTabooDurs', 'tabooMix', '병용금기성분']),
-        ageInfo: pick(item, ['ageInfo', '특정연령']),
-        pregnantInfo: pick(item, ['pregInfo', '임부금기']),
-        relevanceScore: 0,
-        relevanceReason: '',
-        raw: item,
-      }));
+      const items = extractItems(result.value)
+        .map((item) => {
+          const productName = normalizeLine(pick(item, ['itemName', 'ITEM_NAME', '품목명', 'mixtureItemName']));
+          const ingredientName = normalizeLine(pick(item, ['ingrName', 'MAIN_INGR', 'mainIngr', '성분명', 'mixIngr']));
+          const caution = normalizeLine(pick(item, ['prohbtContent', 'ATPN_QESITM', '주의사항', 'mixProhbtCn', 'atpnWarnQesitm']));
+          const contraDrug = normalizeLine(pick(item, ['mixTabooDurs', 'tabooMix', '병용금기성분', 'mixItemName']));
+          const ageInfo = normalizeLine(pick(item, ['ageInfo', '특정연령', 'spcifyAgrde']));
+          const pregnantInfo = normalizeLine(pick(item, ['pregInfo', '임부금기', 'pwnmTaboo']));
+          const summary = normalizeLine([contraDrug, caution, ageInfo, pregnantInfo].filter(isMeaningful).join(' / '));
+
+          if (!isMeaningful(summary)) return null;
+
+          return {
+            productName,
+            ingredientName,
+            caution,
+            contraDrug,
+            ageInfo,
+            pregnantInfo,
+            summary,
+            relevanceScore: 0,
+            relevanceReason: '',
+            raw: item,
+          };
+        })
+        .filter(Boolean) as DurEntry[];
 
       const scored = items.map((entry) => {
         const cautionText = [entry.caution, entry.contraDrug, entry.ageInfo, entry.pregnantInfo]
@@ -204,10 +280,14 @@ export async function POST(req: Request) {
       const prioritized = body.prioritizePatientContext
         ? scored
             .filter((entry) => entry.relevanceScore > 0)
-            .sort((a, b) => b.relevanceScore - a.relevanceScore)
-        : scored.sort((a, b) => b.relevanceScore - a.relevanceScore);
+            .sort((a, b) => b.relevanceScore - a.relevanceScore || b.summary.length - a.summary.length)
+        : scored.sort((a, b) => b.relevanceScore - a.relevanceScore || b.summary.length - a.summary.length);
 
-      const finalItems = prioritized.slice(0, 20);
+      const uniquePrioritized = prioritized.filter(
+        (entry, index, arr) => arr.findIndex((candidate) => candidate.summary === entry.summary) === index
+      );
+
+      const finalItems = uniquePrioritized.slice(0, 12);
 
       return {
         key: section.key,
@@ -216,6 +296,47 @@ export async function POST(req: Request) {
         items: finalItems,
       };
     });
+
+    const hasAnySignal = sections.some((section) => section.total > 0);
+
+    if (!hasAnySignal) {
+      const dbDrug = await prisma.drug.findFirst({
+        where: {
+          OR: [
+            { productName: { contains: body.productName } },
+            ...(body.ingredientName ? [{ ingredientName: { contains: body.ingredientName } }] : []),
+          ],
+        },
+        select: {
+          productName: true,
+          ingredientName: true,
+          durInfo: true,
+        },
+      });
+
+      const fallbackLines = parseDurInfoText(dbDrug?.durInfo);
+      if (fallbackLines.length > 0) {
+        const fallbackItems: DurEntry[] = fallbackLines.slice(0, 12).map((line) => ({
+          productName: dbDrug?.productName || body.productName,
+          ingredientName: dbDrug?.ingredientName || body.ingredientName || '',
+          caution: line,
+          contraDrug: '',
+          ageInfo: '',
+          pregnantInfo: '',
+          summary: line,
+          relevanceScore: 1,
+          relevanceReason: '내부 DUR 데이터',
+          raw: { source: 'drug.durInfo' },
+        }));
+
+        sections.push({
+          key: 'db_fallback',
+          title: '내부 DUR 점검정보',
+          total: fallbackItems.length,
+          items: fallbackItems,
+        });
+      }
+    }
 
     return NextResponse.json({
       success: true,

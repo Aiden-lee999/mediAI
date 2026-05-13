@@ -1,0 +1,328 @@
+{
+  "generatedAt": "2026-05-04T07:31:55.732Z",
+  "baseUrl": "https://mediai-gules.vercel.app",
+  "limit": 20,
+  "results": [
+    {
+      "id": "31dbcccf-bc47-4d16-b07f-0a9f903b7396",
+      "productName": "숙주: Saccharomyces cerevisiae AB110)/불활화백일해균(백일해균 262",
+      "usageFrequency": 0,
+      "detailScore": 27,
+      "durScore": 0,
+      "totalScore": 18,
+      "detailIssues": [
+        "kimsClass 누락",
+        "atcCode 누락",
+        "효능효과 비어 있음",
+        "용법용량 비어 있음",
+        "주의사항 비어 있음"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "bab10fb9-84fe-445d-864b-1355c64e8b1f",
+      "productName": "시트르산수화물",
+      "usageFrequency": 0,
+      "detailScore": 27,
+      "durScore": 0,
+      "totalScore": 18,
+      "detailIssues": [
+        "kimsClass 누락",
+        "atcCode 누락",
+        "효능효과 비어 있음",
+        "용법용량 비어 있음",
+        "주의사항 비어 있음"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "2b86b0df-d7c3-417f-b15a-266400557b2c",
+      "productName": "시트르산수화물",
+      "usageFrequency": 0,
+      "detailScore": 27,
+      "durScore": 0,
+      "totalScore": 18,
+      "detailIssues": [
+        "kimsClass 누락",
+        "atcCode 누락",
+        "효능효과 비어 있음",
+        "용법용량 비어 있음",
+        "주의사항 비어 있음"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "cf4f6928-e2b7-4f95-9939-66f547c1af36",
+      "productName": "인스타코트유니버살",
+      "usageFrequency": 0,
+      "detailScore": 22,
+      "durScore": 0,
+      "totalScore": 14,
+      "detailIssues": [
+        "ingredientContent 누락",
+        "kimsClass 누락",
+        "atcCode 누락",
+        "효능효과 비어 있음",
+        "용법용량 비어 있음",
+        "주의사항 비어 있음"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "861d29fe-563b-4b92-b413-6272b8989bf5",
+      "productName": "린트포",
+      "usageFrequency": 0,
+      "detailScore": 27,
+      "durScore": 0,
+      "totalScore": 18,
+      "detailIssues": [
+        "kimsClass 누락",
+        "atcCode 누락",
+        "효능효과 비어 있음",
+        "용법용량 비어 있음",
+        "주의사항 비어 있음"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "2f56432c-4387-438c-bca6-4e65eb8a451f",
+      "productName": "Nasal Spray Extra Moisturizing,(주)그린제약,Greenpharmaceutical Co.",
+      "usageFrequency": 0,
+      "detailScore": 73,
+      "durScore": 0,
+      "totalScore": 47,
+      "detailIssues": [
+        "atcCode 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "407f7104-359a-4d50-977b-a93e52252ad9",
+      "productName": "본투본연질캡슐",
+      "usageFrequency": 0,
+      "detailScore": 73,
+      "durScore": 0,
+      "totalScore": 47,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "c1d614ff-18ed-442c-b9b5-574b576fb3e1",
+      "productName": "마그온연질캡슐",
+      "usageFrequency": 0,
+      "detailScore": 76,
+      "durScore": 0,
+      "totalScore": 49,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "66844384-cae1-42ed-8bfd-4d915649e82b",
+      "productName": "유나모캡슐",
+      "usageFrequency": 0,
+      "detailScore": 76,
+      "durScore": 0,
+      "totalScore": 49,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "3764e270-5755-4632-9809-f34d7a5936d3",
+      "productName": "기가엔드연질캡슐",
+      "usageFrequency": 0,
+      "detailScore": 73,
+      "durScore": 0,
+      "totalScore": 47,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "015908c1-a081-42c6-94a6-4c0b5d4af022",
+      "productName": "건아이점안액(폴리소르베이트80)(1회용)",
+      "usageFrequency": 0,
+      "detailScore": 70,
+      "durScore": 0,
+      "totalScore": 46,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "0faa02ae-f487-4567-b695-547e58b580bc",
+      "productName": "유에츄데이앤나이트연질캡슐",
+      "usageFrequency": 0,
+      "detailScore": 79,
+      "durScore": 0,
+      "totalScore": 51,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "4565e844-185b-435c-b493-8703d9946f1f",
+      "productName": "바르핀쿨크림",
+      "usageFrequency": 0,
+      "detailScore": 70,
+      "durScore": 0,
+      "totalScore": 46,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "e13f90eb-b703-47e7-8df3-b165e91bc988",
+      "productName": "레스타민코와파우더크림",
+      "usageFrequency": 0,
+      "detailScore": 70,
+      "durScore": 0,
+      "totalScore": 46,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "596d20c5-dbd0-4fe6-96b7-afb95c1683e8",
+      "productName": "덴티골드캡슐",
+      "usageFrequency": 0,
+      "detailScore": 73,
+      "durScore": 0,
+      "totalScore": 47,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "6c2752b3-bffd-4863-836d-137570b6d0d5",
+      "productName": "스마일오투점안액(1회용)",
+      "usageFrequency": 0,
+      "detailScore": 76,
+      "durScore": 0,
+      "totalScore": 49,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "bfc19f33-46a8-4bc2-8077-fc03c84fc6d0",
+      "productName": "풀믹신연고",
+      "usageFrequency": 0,
+      "detailScore": 70,
+      "durScore": 0,
+      "totalScore": 46,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "980e80e2-8c7a-4c12-9f8a-ec6aa4b87e8a",
+      "productName": "로젠연질캡슐(나프록센)",
+      "usageFrequency": 0,
+      "detailScore": 82,
+      "durScore": 0,
+      "totalScore": 53,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "de42eb88-b1bd-4935-9154-166c4e8fc8b3",
+      "productName": "코포나시럽에스",
+      "usageFrequency": 0,
+      "detailScore": 73,
+      "durScore": 0,
+      "totalScore": 47,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    },
+    {
+      "id": "4ba01e9c-2209-4a58-aee9-60c06e1311a2",
+      "productName": "큐앤큐헥시코올거즈액",
+      "usageFrequency": 0,
+      "detailScore": 70,
+      "durScore": 0,
+      "totalScore": 46,
+      "detailIssues": [
+        "kimsClass 누락"
+      ],
+      "durIssues": [
+        "활성 DUR 섹션 없음",
+        "DUR 아이템 없음"
+      ]
+    }
+  ]
+}

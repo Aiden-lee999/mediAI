@@ -23,6 +23,26 @@ type DrugPackageInfo = {
   standardCode: string;
 };
 
+type DrugDurItem = {
+  typeName: string;
+  itemName: string;
+  company: string;
+  ingredientName: string;
+  content: string;
+  mixtureItemName: string;
+  mixtureIngredientName: string;
+  mixtureCompany: string;
+  notificationDate: string;
+  changeDate: string;
+};
+
+type DrugDurSection = {
+  key: string;
+  title: string;
+  items: DrugDurItem[];
+  source: string;
+};
+
 type DrugDetail = {
   productName: string;
   type: string;
@@ -35,6 +55,11 @@ type DrugDetail = {
   atcCode: string;
   ingredientCode: string;
   ingredientContent: string;
+  efficacyText?: string;
+  usageText?: string;
+  cautionText?: string;
+  durSections?: DrugDurSection[];
+  unavailableOfficialSections?: string[];
   additives: string;
   packageInfo: DrugPackageInfo[];
   imageUrl?: string;
@@ -65,6 +90,11 @@ function getUsageFrequencyRange(qty: number) {
 
 function cleanProductName(value: string) {
   return (value || '').replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function hasOfficialText(value?: string) {
+  const clean = (value || '').trim();
+  return !!clean && clean !== '데이터 없음' && clean !== '-';
 }
 
 export default function DrugSearchPanel() {
@@ -380,8 +410,9 @@ export default function DrugSearchPanel() {
         )}
 
         {selectedDrug && !detailLoading && detail && (
-          <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-6">
-            <div className="space-y-2 text-sm">
+          <div className="p-4 sm:p-6 space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-6">
+              <div className="space-y-2 text-sm">
               <div className="grid grid-cols-[140px_1fr] gap-3 py-1 border-b border-slate-100">
                 <div className="font-semibold text-slate-700">구분</div>
                 <div>{detail.type || selectedDrug.type || '-'}</div>
@@ -436,18 +467,81 @@ export default function DrugSearchPanel() {
                   ))}
                 </div>
               </div>
+              </div>
+
+              <div className="flex items-start justify-center">
+                {detail.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={detail.imageUrl} alt={detail.productName || selectedDrug.productName} className="w-full max-w-[220px] rounded-lg border border-slate-200 object-contain bg-white" />
+                ) : (
+                  <div className="w-full max-w-[220px] h-[150px] rounded-lg border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-500 flex items-center justify-center text-center p-3">
+                    식별 이미지 없음
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="flex items-start justify-center">
-              {detail.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={detail.imageUrl} alt={detail.productName || selectedDrug.productName} className="w-full max-w-[220px] rounded-lg border border-slate-200 object-contain bg-white" />
-              ) : (
-                <div className="w-full max-w-[220px] h-[150px] rounded-lg border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-500 flex items-center justify-center text-center p-3">
-                  식별 이미지 없음
-                </div>
-              )}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              {[
+                ['상세허가정보/효능효과', detail.efficacyText],
+                ['복약지도/용법용량', detail.usageText],
+                ['사용상 주의사항', detail.cautionText],
+              ].map(([title, value]) => (
+                <section key={title} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 className="text-sm font-bold text-slate-800 mb-2">{title}</h3>
+                  <div className="max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-700">
+                    {hasOfficialText(value) ? value : '공식 데이터 없음'}
+                  </div>
+                </section>
+              ))}
             </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-base font-bold text-slate-800">DUR/안전성 정보</h3>
+                <span className="text-xs text-slate-500">식품의약품안전처 공식 DUR 데이터 기준</span>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {(detail.durSections || []).map((section) => (
+                  <section key={section.key} className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <h4 className="text-sm font-bold text-slate-800">{section.title}</h4>
+                      <span className="text-[11px] text-slate-500">{section.items?.length || 0}건</span>
+                    </div>
+                    {section.items?.length ? (
+                      <div className="max-h-72 overflow-auto space-y-3 pr-1">
+                        {section.items.map((item, idx) => (
+                          <div key={`${section.key}-${item.itemName}-${item.mixtureItemName}-${idx}`} className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs text-slate-700">
+                            <div className="font-semibold text-slate-900">{item.typeName || section.title}</div>
+                            <div className="mt-1">대상: {item.itemName || detail.productName} {item.ingredientName ? ` / ${item.ingredientName}` : ''}</div>
+                            {(item.mixtureItemName || item.mixtureIngredientName) && (
+                              <div className="mt-1 text-rose-700">병용 대상: {item.mixtureItemName || '-'} {item.mixtureIngredientName ? ` / ${item.mixtureIngredientName}` : ''}</div>
+                            )}
+                            {item.content && <div className="mt-2 whitespace-pre-wrap break-words leading-5">{item.content}</div>}
+                            {(item.notificationDate || item.changeDate) && (
+                              <div className="mt-2 text-[11px] text-slate-500">고시/변경일: {item.notificationDate || '-'} / {item.changeDate || '-'}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-slate-500 text-center">
+                        이 항목은 공식 DUR 데이터에서 확인된 내용이 없습니다.
+                      </div>
+                    )}
+                  </section>
+                ))}
+              </div>
+            </div>
+
+            {!!detail.unavailableOfficialSections?.length && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 leading-5">
+                <div className="font-bold mb-1">추가 데이터 소스 확인 필요</div>
+                <div>
+                  {detail.unavailableOfficialSections.join(', ')} 항목은 현재 연결된 공식 dump/API만으로는 품목별 확정 표시가 어려워 임의로 채우지 않습니다.
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

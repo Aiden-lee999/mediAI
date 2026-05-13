@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 const SORT_PREF_KEY = 'drugSearch.sortPreference.v1';
 
@@ -37,6 +38,7 @@ function saveSortPreference(col: string, asc: boolean) {
 }
 
 export default function DrugSearch() {
+  const router = useRouter();
   const initialSort = loadSortPreference();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('검색결과');
@@ -45,6 +47,9 @@ export default function DrugSearch() {
   const [error, setError] = useState('');
   const [selectedDrug, setSelectedDrug] = useState<any>(null);
   const [resultFilter, setResultFilter] = useState('');
+  const [pageSize, setPageSize] = useState<number>(20);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
   // Sorting state
   const [sortCol, setSortCol] = useState<string>(initialSort.col);
@@ -152,6 +157,24 @@ export default function DrugSearch() {
     });
   }, [searchResults, resultFilter, sortCol, isAsc]);
 
+  const totalPages = Math.max(1, Math.ceil(visibleResults.length / pageSize));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchResults, resultFilter, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const pagedResults = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    return visibleResults.slice(start, end);
+  }, [visibleResults, currentPage, pageSize]);
+
   const [durInfo, setDurInfo] = useState<any>(null);
   const [durLoading, setDurLoading] = useState(false);
   
@@ -196,10 +219,22 @@ export default function DrugSearch() {
 
   const handleSelectDrug = (drug: any) => {
     setSelectedDrug(drug);
-    fetchDUR(drug);
-    fetchLLMInfo(drug);
-    // DO NOT change activeTab automatically to allow the user to keep viewing search results!
-    setActiveTab('급여조회');
+    const key = encodeURIComponent(drug.standardCode || drug.insuranceCode || drug.id || drug.productName || 'unknown');
+    const qs = new URLSearchParams({
+      productName: drug.productName || '',
+      ingredientName: drug.ingredientName || '',
+      company: drug.company || '',
+      standardCode: drug.standardCode || '',
+      insuranceCode: drug.insuranceCode || '',
+      atcCode: drug.atcCode || '',
+      reimbursement: drug.reimbursement || '',
+      priceLabel: drug.priceLabel || '',
+      imageUrl: drug.imageUrl || '',
+      brandClass: drug.brandClass || '',
+      usageFrequency: String(drug.usageFrequency || 0),
+    });
+
+    router.push(`/drug/${key}?${qs.toString()}`);
   };
 
   const handleSearch = async () => {
@@ -214,6 +249,7 @@ export default function DrugSearch() {
       if (res.ok) {
         setSearchResults(data.items || []);
         setResultFilter('');
+        setCurrentPage(1);
         setActiveTab('검색결과'); // Add a tab for search results
       } else {
         setError(`검색 오류: ${data.message || res.statusText}`);
@@ -276,6 +312,30 @@ export default function DrugSearch() {
                    <span className="text-blue-500"></span> 검색 결과 {searchResults.length > 0 && `(${visibleResults.length}/${searchResults.length}건)`}
                  </h3>
 
+                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                   <div>
+                     페이지 {currentPage} / {totalPages}
+                     {visibleResults.length > 0 && (
+                       <span className="ml-2">
+                         ({(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, visibleResults.length)} / {visibleResults.length})
+                       </span>
+                     )}
+                   </div>
+                   <div className="flex items-center gap-2">
+                     <label htmlFor="page-size" className="font-semibold text-slate-700">페이지당 표시</label>
+                     <select
+                       id="page-size"
+                       className="border border-slate-300 rounded px-2 py-1 bg-white"
+                       value={pageSize}
+                       onChange={(e) => setPageSize(Number(e.target.value))}
+                     >
+                       <option value={20}>20개</option>
+                       <option value={50}>50개</option>
+                       <option value={100}>100개</option>
+                     </select>
+                   </div>
+                 </div>
+
                  <div className="mb-4">
                    <input
                      type="text"
@@ -322,6 +382,7 @@ export default function DrugSearch() {
                        <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                           <tr>
                              <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('productName')}>제품명 {sortCol === 'productName' && (isAsc ? '▲' : '▼')}</th>
+                             <th className="p-3">이미지</th>
                              <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('brandClass')}>구분 {sortCol === 'brandClass' && (isAsc ? '▲' : '▼')}</th>
                              <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('ingredientName')}>주성분 {sortCol === 'ingredientName' && (isAsc ? '▲' : '▼')}</th>
                               <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('company')}>제약사 {sortCol === 'company' && (isAsc ? '▲' : '▼')}</th>
@@ -330,9 +391,25 @@ export default function DrugSearch() {
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-slate-100">
-                            {visibleResults.map((item, idx) => (
+                            {pagedResults.map((item, idx) => (
                             <tr key={`${item.standardCode || item.id || idx}_${item.company || ''}`} className={`hover:bg-slate-50 cursor-pointer ${selectedDrug?.productName === item.productName && selectedDrug?.company === item.company ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`} onClick={() => handleSelectDrug(item)}>
                              <td className="p-3 font-[800] text-blue-700 max-w-[120px] sm:max-w-[160px] lg:max-w-[200px] break-words whitespace-normal leading-tight">{item.productName}</td>
+                             <td className="p-3">
+                               {!brokenImages[item.id || item.standardCode || item.insuranceCode || `${idx}`] && item.imageUrl ? (
+                                 // eslint-disable-next-line @next/next/no-img-element
+                                 <img
+                                   src={item.imageUrl}
+                                   alt={item.productName || 'drug'}
+                                   className="h-12 w-12 rounded object-contain border border-slate-200 bg-white"
+                                   onError={() => {
+                                     const key = item.id || item.standardCode || item.insuranceCode || `${idx}`;
+                                     setBrokenImages((prev) => ({ ...prev, [key]: true }));
+                                   }}
+                                 />
+                               ) : (
+                                 <div className="h-12 w-12 rounded border border-slate-200 bg-slate-50 text-[10px] text-slate-400 flex items-center justify-center">N/A</div>
+                               )}
+                             </td>
                              <td className="p-3 text-xs">
                                <span className={`px-2 py-0.5 rounded-full ${item.brandClass === '오리지널(대장약)' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
                                  {item.brandClass || '복제약(제네릭)'}
@@ -346,6 +423,51 @@ export default function DrugSearch() {
                           ))}
                        </tbody>
                     </table>
+
+                    {visibleResults.length > 0 && (
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="text-slate-500">
+                          총 {visibleResults.length}건 중 {Math.min(currentPage * pageSize, visibleResults.length)}건까지 표시
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage(1)}
+                            disabled={currentPage === 1}
+                            className="px-2 py-1 rounded border border-slate-300 bg-white disabled:opacity-40"
+                          >
+                            처음
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="px-2 py-1 rounded border border-slate-300 bg-white disabled:opacity-40"
+                          >
+                            이전
+                          </button>
+                          <span className="min-w-16 text-center font-semibold text-slate-700">
+                            {currentPage} / {totalPages}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            className="px-2 py-1 rounded border border-slate-300 bg-white disabled:opacity-40"
+                          >
+                            다음
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage(totalPages)}
+                            disabled={currentPage === totalPages}
+                            className="px-2 py-1 rounded border border-slate-300 bg-white disabled:opacity-40"
+                          >
+                            마지막
+                          </button>
+                        </div>
+                      </div>
+                    )}
                    </div>
                  ) : (
                    <div className="text-center py-8 text-slate-500">
@@ -479,6 +601,7 @@ export default function DrugSearch() {
             </div>
          </div>
       </div>
+
     </div>
   );
 }

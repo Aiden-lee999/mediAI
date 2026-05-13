@@ -24,3 +24,24 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.print-break-inside-avoid {
+  break-inside: avoid;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-grid-single {
+    display: block !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

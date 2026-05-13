@@ -1,8 +1,6 @@
 ﻿import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 // 환경변수에 OPENAI_API_KEY가 등록되어 있다고 가정합니다.
 const openai = new OpenAI({
@@ -23,7 +21,12 @@ export async function POST(req: Request) {
 
     let ragContext = "";
     if (question && question.length >= 2) {
-      const searchTerms = question.split(' ').map((w: string) => w.trim()).filter((w: string) => w.length >= 2);
+      const searchTerms = question
+        .split(/[\s,.;:!?()\[\]{}"'“”‘’]+/)
+        .map((w: string) => w.trim())
+        .filter((w: string) => w.length >= 2)
+        .filter((w: string) => !['그리고', '해당', '최신', '기준', '포함', '같이', '반환', '추천', '분석'].includes(w))
+        .slice(0, 5);
       if (searchTerms.length > 0) {
         // 간단한 휴리스틱 (약품/성분명 검색 키워드가 들어왔을 때 관련 정보 컨텍스트를 주입합니다)
         const drugs = await prisma.drug.findMany({
@@ -37,7 +40,7 @@ export async function POST(req: Request) {
           take: 3,
           select: {
              productName: true, ingredientName: true, company: true, priceLabel: true, type: true, 
-             efficacy: true, durInfo: true, publicApiDump: true
+             efficacy: true, durInfo: true
           }
         });
         

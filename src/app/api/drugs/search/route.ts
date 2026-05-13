@@ -1,6 +1,8 @@
 ﻿import { NextResponse } from 'next/server';
 import { loadIngredientCodeMap, loadRichDrugPrices, searchProductsByIngredient } from '@/lib/drugPricesCsv';
 import { prisma } from '@/lib/prisma';
+import { callPublicDrugApi, extractItems } from '@/lib/publicDrugApiClient';
+import { DATA_GO_KR_FALLBACK_SERVICE_KEY, PUBLIC_DRUG_API_ENDPOINTS } from '@/lib/publicDrugApiCatalog';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -9,6 +11,7 @@ type SearchItem = {
   productName: string;
   ingredientName: string;
   company: string;
+  imageUrl: string;
   priceLabel: string;
   reimbursement: string;
   insuranceCode: string;
@@ -21,6 +24,15 @@ type SearchItem = {
   sourceService: string;
 };
 
+type RawJsonLike = {
+  itemImage?: string;
+  ITEM_IMAGE?: string;
+  itemImage1?: string;
+  ITEM_IMAGE1?: string;
+  BIG_ITEM_IMAGE_DOCID?: string;
+  SMALL_ITEM_IMAGE_DOCID?: string;
+};
+
 type QueryPayload = {
   productName?: string;
   ingredientName?: string;
@@ -28,13 +40,42 @@ type QueryPayload = {
   limit?: number;
 };
 
+type GrainImageIndexEntry = {
+  itemName: string;
+  company: string;
+  imageUrl: string;
+  itemSeq: string;
+  stdCodes: string[];
+};
+
+type CompactImageIndexRow = GrainImageIndexEntry;
+
+type GrainImageIndex = {
+  rows: GrainImageIndexEntry[];
+  byStdCode: Map<string, string>;
+  byItemSeq: Map<string, string>;
+  byStdCodeName: Map<string, string>;
+  byItemSeqName: Map<string, string>;
+};
+
+type PermitImageIndex = {
+  byCode: Map<string, string>;
+  byCodeName: Map<string, string>;
+  byNameCompany: Map<string, string>;
+  byName: Map<string, string>;
+};
+
 const SEARCH_CACHE_TTL_MS = 1000 * 30;
-const DEFAULT_SEARCH_LIMIT = 2000;
-const MAX_SEARCH_LIMIT = 10000;
+const DEFAULT_SEARCH_LIMIT = 100;
+const MAX_SEARCH_LIMIT = 500;
 const searchCache = new Map<string, { expiresAt: number; data: { success: boolean; count: number; items: SearchItem[]; fallbackUsed: boolean } }>();
 const PERMIT_CODE_CACHE_TTL_MS = 1000 * 60 * 10;
 let acetaminophenPermitCodesCache: { expiresAt: number; codes: string[] } | null = null;
 let acetaminophenPermitNamesCache: { expiresAt: number; names: string[] } | null = null;
+let grainImageIndexCache: { expiresAt: number; index: GrainImageIndex } | null = null;
+let permitImageIndexCache: { expiresAt: number; index: PermitImageIndex } | null = null;
+let compactImageRowsCache: { expiresAt: number; rows: CompactImageIndexRow[] } | null = null;
+const liveGrainSearchCache = new Map<string, { expiresAt: number; items: SearchItem[] }>();
 
 const ACETAMINOPHEN_PRODUCT_HINTS = [
   '판피린큐액',
@@ -142,12 +183,308 @@ function looksLikeMojibake(value: string) {
   return latinExtendedHits.length >= 2;
 }
 
+function recoverMojibakeKorean(value: string) {
+  const text = (value || '').trim();
+  if (!text) return text;
+  if (hasKoreanText(text)) return text;
+  if (!looksLikeMojibake(text)) return text;
+
+  try {
+    const recovered = Buffer.from(text, 'latin1').toString('utf8').trim();
+    if (recovered && hasKoreanText(recovered)) return recovered;
+    return text;
+  } catch {
+    return text;
+  }
+}
+
 function normalizeBaseProductName(name: string) {
   return name
     .replace(/&nbsp;/gi, ' ')
     .split('(')[0]
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeDrugNameKey(name: string) {
+  return normalizeBaseProductName(name)
+    .toLowerCase()
+    .replace(/[\s\-_/.,()[\]{}]/g, '')
+    .trim();
+}
+
+function normalizeCompanyKey(name: string) {
+  return (name || '')
+    .toLowerCase()
+    .replace(/[\s()]/g, '')
+    .trim();
+}
+function hasKoreanText(value: string) {
+  return /[\u3131-\u318E\uAC00-\uD7A3]/.test(value || '');
+}
+
+function makeNameCompanyKey(productName: string, company: string) {
+  return `${normalizeDrugNameKey(productName)}__${normalizeCompanyKey(company)}`;
+}
+
+function addImageIndexKeys(index: PermitImageIndex, productName: string, company: string, imageUrl: string) {
+  const nameKey = normalizeDrugNameKey(productName);
+  if (!nameKey || !imageUrl) return;
+
+  if (!index.byName.has(nameKey)) index.byName.set(nameKey, imageUrl);
+
+  const baseKey = normalizeDrugNameKey(normalizeBaseProductName(productName));
+  if (baseKey && !index.byName.has(baseKey)) index.byName.set(baseKey, imageUrl);
+
+  const companyKey = normalizeCompanyKey(company);
+  if (companyKey) {
+    const key = makeNameCompanyKey(productName, company);
+    if (!index.byNameCompany.has(key)) index.byNameCompany.set(key, imageUrl);
+
+    const baseNameCompanyKey = `${baseKey}__${companyKey}`;
+    if (baseKey && !index.byNameCompany.has(baseNameCompanyKey)) {
+      index.byNameCompany.set(baseNameCompanyKey, imageUrl);
+    }
+  }
+}
+
+async function loadCompactImageRows() {
+  const now = Date.now();
+  if (compactImageRowsCache && compactImageRowsCache.expiresAt > now) {
+    return compactImageRowsCache.rows;
+  }
+
+  try {
+    const filePath = path.join(process.cwd(), 'data', 'public_api_dumps', 'drug_image_index.json');
+    const text = await fs.readFile(filePath, 'utf8');
+    const rawRows = JSON.parse(text) as Array<Partial<CompactImageIndexRow>>;
+    const rows = rawRows
+      .map((row) => ({
+        itemName: String(row.itemName || '').trim(),
+        company: String(row.company || '').trim(),
+        imageUrl: toAbsoluteImageUrl(String(row.imageUrl || '').trim()),
+        itemSeq: toDigits(String(row.itemSeq || '')),
+        stdCodes: Array.isArray(row.stdCodes)
+          ? row.stdCodes.map((code) => toDigits(String(code))).filter(Boolean)
+          : [],
+      }))
+      .filter((row) => row.itemName && row.imageUrl);
+
+    compactImageRowsCache = {
+      expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+      rows,
+    };
+    return rows;
+  } catch {
+    compactImageRowsCache = {
+      expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+      rows: [],
+    };
+    return [] as CompactImageIndexRow[];
+  }
+}
+
+async function loadGrainImageIndex() {
+  const now = Date.now();
+  if (grainImageIndexCache && grainImageIndexCache.expiresAt > now) {
+    return grainImageIndexCache.index;
+  }
+
+  try {
+    const normalized = await loadCompactImageRows();
+
+    const byStdCode = new Map<string, string>();
+    const byItemSeq = new Map<string, string>();
+    const byStdCodeName = new Map<string, string>();
+    const byItemSeqName = new Map<string, string>();
+    for (const row of normalized) {
+      for (const alias of codeAliases(row.itemSeq)) {
+        if (!byItemSeq.has(alias)) byItemSeq.set(alias, row.imageUrl);
+        if (!byItemSeqName.has(alias)) byItemSeqName.set(alias, row.itemName);
+      }
+      for (const code of row.stdCodes) {
+        for (const alias of codeAliases(code)) {
+          if (!byStdCode.has(alias)) byStdCode.set(alias, row.imageUrl);
+          if (!byStdCodeName.has(alias)) byStdCodeName.set(alias, row.itemName);
+        }
+      }
+    }
+
+    const index: GrainImageIndex = {
+      rows: normalized,
+      byStdCode,
+      byItemSeq,
+      byStdCodeName,
+      byItemSeqName,
+    };
+
+    grainImageIndexCache = {
+      expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+      index,
+    };
+    return index;
+  } catch {
+    const emptyIndex: GrainImageIndex = {
+      rows: [],
+      byStdCode: new Map<string, string>(),
+      byItemSeq: new Map<string, string>(),
+      byStdCodeName: new Map<string, string>(),
+      byItemSeqName: new Map<string, string>(),
+    };
+    grainImageIndexCache = {
+      expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+      index: emptyIndex,
+    };
+    return emptyIndex;
+  }
+}
+
+async function loadPermitImageIndex() {
+  const now = Date.now();
+  if (permitImageIndexCache && permitImageIndexCache.expiresAt > now) {
+    return permitImageIndexCache.index;
+  }
+
+  try {
+    const byCode = new Map<string, string>();
+    const byCodeName = new Map<string, string>();
+    const byNameCompany = new Map<string, string>();
+    const byName = new Map<string, string>();
+    const index: PermitImageIndex = { byCode, byCodeName, byNameCompany, byName };
+
+    const rows = await loadCompactImageRows();
+    for (const row of rows) {
+      const imageUrl = row.imageUrl;
+      const productName = row.itemName;
+      const company = row.company;
+      const itemSeq = row.itemSeq;
+      for (const alias of codeAliases(itemSeq)) {
+        if (!byCode.has(alias)) byCode.set(alias, imageUrl);
+        if (!byCodeName.has(alias) && productName) byCodeName.set(alias, productName);
+      }
+      for (const code of row.stdCodes) {
+        for (const alias of codeAliases(code)) {
+          if (!byCode.has(alias)) byCode.set(alias, imageUrl);
+          if (!byCodeName.has(alias) && productName) byCodeName.set(alias, productName);
+        }
+      }
+
+      addImageIndexKeys(index, productName, company, imageUrl);
+    }
+
+    permitImageIndexCache = {
+      expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+      index,
+    };
+    return index;
+  } catch {
+    const empty: PermitImageIndex = { byCode: new Map<string, string>(), byCodeName: new Map<string, string>(), byNameCompany: new Map<string, string>(), byName: new Map<string, string>() };
+    permitImageIndexCache = {
+      expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+      index: empty,
+    };
+    return empty;
+  }
+}
+
+function findImageFromPermitIndex(index: PermitImageIndex, productName: string, company: string | null | undefined, standardCode?: string, insuranceCode?: string) {
+  const codeCandidates = [standardCode || '', insuranceCode || '']
+    .flatMap((raw) => String(raw).split(','))
+    .flatMap((code) => codeAliases(code))
+    .filter(Boolean);
+
+  for (const code of codeCandidates) {
+    const hit = index.byCode.get(code);
+    if (hit) return hit;
+  }
+
+  const key = makeNameCompanyKey(productName || '', company || '');
+  const companyHit = index.byNameCompany.get(key);
+  if (companyHit) return companyHit;
+
+  const baseCompanyKey = makeNameCompanyKey(normalizeBaseProductName(productName || ''), company || '');
+  const baseCompanyHit = index.byNameCompany.get(baseCompanyKey);
+  if (baseCompanyHit) return baseCompanyHit;
+
+  const nameKey = normalizeDrugNameKey(productName || '');
+  const nameHit = index.byName.get(nameKey);
+  if (nameHit) return nameHit;
+
+  const baseNameKey = normalizeDrugNameKey(normalizeBaseProductName(productName || ''));
+  const baseNameHit = index.byName.get(baseNameKey);
+  if (baseNameHit) return baseNameHit;
+
+  return '';
+}
+
+function findImageFromGrainIndex(index: GrainImageIndex, productName: string, company?: string | null, standardCode?: string, insuranceCode?: string) {
+  const codeCandidates = [standardCode || '', insuranceCode || '']
+    .flatMap((raw) => String(raw).split(','))
+    .flatMap((code) => codeAliases(code))
+    .filter(Boolean);
+
+  for (const code of codeCandidates) {
+    const byStd = index.byStdCode.get(code);
+    if (byStd) return byStd;
+  }
+
+  for (const code of codeCandidates) {
+    const bySeq = index.byItemSeq.get(code);
+    if (bySeq) return bySeq;
+  }
+
+  const nameKey = normalizeDrugNameKey(productName || '');
+  const companyKey = normalizeCompanyKey(company || '');
+  if (!nameKey) return '';
+
+  const exactWithCompany = index.rows.find((row) =>
+    normalizeDrugNameKey(row.itemName) === nameKey &&
+    companyKey &&
+    normalizeCompanyKey(row.company) === companyKey,
+  );
+  if (exactWithCompany?.imageUrl) return exactWithCompany.imageUrl;
+
+  const exact = index.rows.find((row) => normalizeDrugNameKey(row.itemName) === nameKey);
+  if (exact?.imageUrl) return exact.imageUrl;
+
+  const partial = index.rows.find((row) => {
+    const k = normalizeDrugNameKey(row.itemName);
+    return k.includes(nameKey) || nameKey.includes(k);
+  });
+  return partial?.imageUrl || '';
+}
+
+function findNameFromPermitIndex(index: PermitImageIndex, standardCode?: string, insuranceCode?: string) {
+  const codeCandidates = [standardCode || '', insuranceCode || '']
+    .flatMap((raw) => String(raw).split(','))
+    .flatMap((code) => codeAliases(code))
+    .filter(Boolean);
+
+  for (const code of codeCandidates) {
+    const hit = index.byCodeName.get(code);
+    if (hit) return hit;
+  }
+
+  return '';
+}
+
+function findNameFromGrainIndex(index: GrainImageIndex, standardCode?: string, insuranceCode?: string) {
+  const codeCandidates = [standardCode || '', insuranceCode || '']
+    .flatMap((raw) => String(raw).split(','))
+    .flatMap((code) => codeAliases(code))
+    .filter(Boolean);
+
+  for (const code of codeCandidates) {
+    const hit = index.byStdCodeName.get(code);
+    if (hit) return hit;
+  }
+
+  for (const code of codeCandidates) {
+    const hit = index.byItemSeqName.get(code);
+    if (hit) return hit;
+  }
+
+  return '';
 }
 
 function normalizeSearchText(value: string) {
@@ -174,6 +511,171 @@ function toProductCode(value: string) {
     return digits.slice(3, 12);
   }
   return '';
+}
+
+function codeAliases(value: string) {
+  const digits = toDigits(value);
+  if (!digits) return [] as string[];
+
+  const aliases = new Set<string>();
+  aliases.add(digits);
+
+  const productCode = toProductCode(digits);
+  if (productCode) aliases.add(productCode);
+
+  // Some sources store product code as 9 digits, others as 13-digit barcode-like values.
+  if (digits.length === 9) {
+    aliases.add(`880${digits}`);
+  }
+
+  return Array.from(aliases);
+}
+
+function toAbsoluteImageUrl(value: string) {
+  const raw = (value || '').trim();
+  if (!raw) return '';
+  if (/^data:image\/(?:jpeg|jpg|png|webp);base64,/i.test(raw)) return raw;
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  if (raw.startsWith('/')) return `https://nedrug.mfds.go.kr${raw}`;
+  if (/^\d{10,}$/.test(raw)) return buildImageByDocId(raw);
+  return '';
+}
+
+function buildImageByDocId(docId: string) {
+  const id = (docId || '').trim();
+  if (!id) return '';
+  return `https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/${id}`;
+}
+
+function extractImageFromRawJson(rawJson: string | null | undefined) {
+  if (!rawJson) return '';
+  try {
+    const parsed = JSON.parse(rawJson) as RawJsonLike;
+    const direct =
+      toAbsoluteImageUrl(parsed.itemImage || '') ||
+      toAbsoluteImageUrl(parsed.ITEM_IMAGE || '') ||
+      toAbsoluteImageUrl(parsed.itemImage1 || '') ||
+      toAbsoluteImageUrl(parsed.ITEM_IMAGE1 || '');
+    if (direct) return direct;
+
+    const doc = parsed.itemImage || parsed.BIG_ITEM_IMAGE_DOCID || parsed.SMALL_ITEM_IMAGE_DOCID || '';
+    return buildImageByDocId(String(doc));
+  } catch {
+    return '';
+  }
+}
+
+function pickField(obj: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+async function fetchLiveGrainSearchItems(keyword: string, company: string, resultLimit: number) {
+  const q = (keyword || '').trim();
+  if (!q) return [] as SearchItem[];
+
+  const cacheKey = `${q.toLowerCase()}__${(company || '').trim().toLowerCase()}__${resultLimit}`;
+  const cached = liveGrainSearchCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.items;
+  }
+
+  const grainService = PUBLIC_DRUG_API_ENDPOINTS.find((s) => s.baseUrl.includes('MdcinGrnIdntfcInfoService03'));
+  if (!grainService) return [] as SearchItem[];
+
+  try {
+    let payload: any;
+    try {
+      payload = await callPublicDrugApi({
+        serviceName: grainService.serviceName,
+        baseUrl: grainService.baseUrl,
+        operation: '/getMdcinGrnIdntfcInfoList03',
+        query: {
+          item_name: q,
+          entp_name: (company || '').trim() || undefined,
+          numOfRows: Math.min(200, Math.max(20, resultLimit)),
+          pageNo: 1,
+        },
+        timeoutMs: 3500,
+        retries: 0,
+      });
+    } catch {
+      // Retry with explicit known-good fallback key when deployment env key is invalid.
+      const params = new URLSearchParams({
+        serviceKey: DATA_GO_KR_FALLBACK_SERVICE_KEY,
+        type: 'json',
+        numOfRows: String(Math.min(200, Math.max(20, resultLimit))),
+        pageNo: '1',
+        item_name: q,
+      });
+      const entpName = (company || '').trim();
+      if (entpName) params.set('entp_name', entpName);
+
+      const url = `${grainService.baseUrl}/getMdcinGrnIdntfcInfoList03?${params.toString()}`;
+      const res = await fetch(url, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error('MFDS live fallback fetch failed');
+      const raw = await res.text();
+      payload = JSON.parse(raw);
+    }
+
+    const rows = extractItems(payload) as Array<Record<string, unknown>>;
+    const rawMapped: Array<SearchItem | null> = rows
+      .map((row): SearchItem | null => {
+        const productName = pickField(row, ['ITEM_NAME', 'itemName']);
+        const companyName = pickField(row, ['ENTP_NAME', 'entpName']) || '-';
+        const itemSeq = toDigits(pickField(row, ['ITEM_SEQ', 'itemSeq']));
+        const stdCdRaw = pickField(row, ['STD_CD', 'stdCode', 'barCode']);
+        const stdCd = toDigits(stdCdRaw.split(',')[0] || '');
+        const imageUrl = toAbsoluteImageUrl(pickField(row, ['ITEM_IMAGE', 'itemImage', 'ITEM_IMAGE1', 'itemImage1']));
+        const type = pickField(row, ['ETC_OTC_NAME', 'etcOtcName']) || '-';
+        const releaseDate = pickField(row, ['ITEM_PERMIT_DATE', 'itemPermitDate']) || '-';
+
+        if (!productName) return null;
+
+        const code = stdCd || itemSeq || '';
+        return {
+          id: code || `${normalizeDrugNameKey(productName)}__${normalizeCompanyKey(companyName)}`,
+          productName,
+          ingredientName: '-',
+          company: companyName,
+          imageUrl,
+          priceLabel: '가격정보없음 / 급여구분미확인',
+          reimbursement: '급여구분미확인',
+          insuranceCode: code || '-',
+          standardCode: code || '-',
+          atcCode: '-',
+          type,
+          releaseDate,
+          usageFrequency: 0,
+          brandClass: '복제약(제네릭)' as SearchItem['brandClass'],
+          sourceService: 'MFDS 낱알식별 실시간 조회',
+        };
+      })
+      ;
+
+    const mapped = rawMapped.filter((x): x is SearchItem => x !== null);
+
+    const dedup = new Map<string, SearchItem>();
+    for (const item of mapped) {
+      const key = `${item.standardCode}__${normalizeDrugNameKey(item.productName)}__${normalizeCompanyKey(item.company)}`;
+      if (!dedup.has(key)) dedup.set(key, item);
+    }
+
+    const result = Array.from(dedup.values()).slice(0, resultLimit);
+    liveGrainSearchCache.set(cacheKey, {
+      expiresAt: Date.now() + SEARCH_CACHE_TTL_MS,
+      items: result,
+    });
+    return result;
+  } catch {
+    return [] as SearchItem[];
+  }
 }
 
 function isAcetaminophenKeyword(keyword: string) {
@@ -401,7 +903,9 @@ async function runSearch(body: QueryPayload) {
     reimbursement: true,
     type: true,
     releaseDate: true,
+    imageUrl: true,
     usageFrequency: true,
+    rawJson: true,
   } as const;
 
   // Strict query first for fast paths; fallback to broad only when needed.
@@ -697,6 +1201,8 @@ async function runSearch(body: QueryPayload) {
 
   const csvPriceMap = needsCsvPrice ? await loadRichDrugPrices() : new Map();
   const ingredientCodeMap = needsCsvIngredient ? await loadIngredientCodeMap() : new Map();
+  const grainImageIndex = await loadGrainImageIndex();
+  const permitImageIndex = await loadPermitImageIndex();
 
   const finalItems: SearchItem[] = drugs.map((item: (typeof drugs)[number]) => {
     const standardCode = (item.standardCode || '').trim();
@@ -733,10 +1239,22 @@ async function runSearch(body: QueryPayload) {
     const brandClass: SearchItem['brandClass'] = (isOriginalCompany || isOriginalName) ? '오리지널(대장약)' : '복제약(제네릭)';
 
     const productNameFromDb = (item.productName || '').trim();
-    const finalProductName =
-      (looksLikeMojibake(productNameFromDb) && (csvData?.productName || '').trim())
-        ? String(csvData?.productName).trim()
-        : (productNameFromDb || '-');
+    let finalProductName = productNameFromDb || '-';
+    if (looksLikeMojibake(productNameFromDb)) {
+      const permitName = findNameFromPermitIndex(
+        permitImageIndex,
+        item.standardCode || '',
+        item.insuranceCode || '',
+      );
+      const grainName = findNameFromGrainIndex(
+        grainImageIndex,
+        item.standardCode || '',
+        item.insuranceCode || '',
+      );
+      const csvName = String(csvData?.productName || '').trim();
+      finalProductName = permitName || grainName || csvName || productNameFromDb || '-';
+    }
+    finalProductName = recoverMojibakeKorean(finalProductName);
 
     let finalPriceLabel = '';
     if (p === '가격정보없음') {
@@ -747,11 +1265,29 @@ async function runSearch(body: QueryPayload) {
        finalPriceLabel = p + ' / ' + c;
     }
 
+    const imageUrlFromDb = toAbsoluteImageUrl(item.imageUrl || '');
+    const imageUrlFromRaw = extractImageFromRawJson(item.rawJson);
+    const imageUrlFromGrain = findImageFromGrainIndex(
+      grainImageIndex,
+      finalProductName,
+      item.company || '',
+      item.standardCode || '',
+      item.insuranceCode || '',
+    );
+    const imageUrlFromPermit = findImageFromPermitIndex(
+      permitImageIndex,
+      finalProductName,
+      item.company || '',
+      item.standardCode || '',
+      item.insuranceCode || '',
+    );
+
     return {
       id: item.standardCode || item.id,
       productName: finalProductName,
       ingredientName: finalIngr,
       company: item.company || '-',
+      imageUrl: imageUrlFromDb || imageUrlFromRaw || imageUrlFromGrain || imageUrlFromPermit,
       priceLabel: finalPriceLabel,
       reimbursement: c,
       insuranceCode: item.insuranceCode || item.standardCode || '-',
@@ -859,6 +1395,20 @@ async function runSearch(body: QueryPayload) {
         if (!uniq.has(key)) uniq.set(key, item);
       }
       dedupedItems = Array.from(uniq.values());
+    }
+  }
+
+  // If DB-side recall is poor (e.g. mojibake/corrupted product names),
+  // supplement search results with live MFDS grain identification API.
+  if (searchProducts.length === 1 && dedupedItems.length === 0) {
+    const liveItems = await fetchLiveGrainSearchItems(searchProducts[0], company || '', resultLimit);
+    if (liveItems.length > 0) {
+      const merged = new Map<string, SearchItem>();
+      for (const item of [...dedupedItems, ...liveItems]) {
+        const key = `${item.standardCode}__${normalizeDrugNameKey(item.productName)}__${normalizeCompanyKey(item.company)}`;
+        if (!merged.has(key)) merged.set(key, item);
+      }
+      dedupedItems = Array.from(merged.values()).slice(0, resultLimit);
     }
   }
 

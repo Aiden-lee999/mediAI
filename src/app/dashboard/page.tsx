@@ -8,6 +8,7 @@ import Emergency from '@/components/dashboard/Emergency';
 import LegalReview from '@/components/dashboard/LegalReview';
 import TranslateMCA from '@/components/dashboard/TranslateMCA';
 import SettingsMyPage from '@/components/dashboard/SettingsMyPage';
+import RecruitMatch from '@/components/dashboard/RecruitMatch';
 
 // ==========================================
 // 1. 하위 컴포넌트: 인터랙티브 약물 정렬 테이블
@@ -457,6 +458,9 @@ export default function DashboardPage() {
            <button onClick={() => {setView('translate'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='translate'?'bg-slate-800 text-white':''}`}>
               다국어 진료 어시스턴트 MCA
            </button>
+            <button onClick={() => {setView('recruit'); if(window.innerWidth<768) setSidebarOpen(false);}} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 ${view==='recruit'?'bg-slate-800 text-white':''}`}>
+              구인·구직 AI 매칭
+            </button>
            <button onClick={() => setView('settings')} className={`text-left px-3 py-2 rounded flex items-center gap-3 hover:bg-slate-800 text-blue-300 mt-4 border border-slate-700`}>
                 마이페이지 및 설정
            </button>
@@ -484,10 +488,10 @@ export default function DashboardPage() {
           <button className="md:hidden p-2 -ml-2 text-slate-600" onClick={() => setSidebarOpen(true)}> 메뉴</button>
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-               {view === 'chat' ? '전문 의학 어시스턴트' : view === 'emergency' ? '🚨 실시간 응급(ER) 어시스턴트' : view === 'legal' ? '⚖️ 의료 법률 및 판례 어시스턴트' : view === 'translate' ? '진료실 다국어 번역' : view === 'rag_review' ? 'RAG 기반 논문/가이드라인 검색 및 리뷰' : '내 라이브러리'}    
+              {view === 'chat' ? '전문 의학 어시스턴트' : view === 'emergency' ? '🚨 실시간 응급(ER) 어시스턴트' : view === 'legal' ? '⚖️ 의료 법률 및 판례 어시스턴트' : view === 'translate' ? '진료실 다국어 번역' : view === 'rag_review' ? 'RAG 기반 논문/가이드라인 검색 및 리뷰' : view === 'recruit' ? '구인·구직 AI 매칭' : '내 라이브러리'}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-               {view === 'chat' ? '진료, 연구, 약물 보조 및 종합 인텔리전스' : view === 'emergency' ? '긴급 상황 프로토콜, 용량 계산, 처치 우선순위 즉각 답변' : view === 'legal' ? '의료분쟁 판례 검색, 의료법 해석, 방어 진료 지침' : view === 'translate' ? '복약지도 및 소견서 임상 번역' : view === 'rag_review' ? '최신 논문 기반 응답 및 동료 의사 리뷰 워크플로우 연동' : '저장된 중요 레퍼런스 모음'}
+              {view === 'chat' ? '진료, 연구, 약물 보조 및 종합 인텔리전스' : view === 'emergency' ? '긴급 상황 프로토콜, 용량 계산, 처치 우선순위 즉각 답변' : view === 'legal' ? '의료분쟁 판례 검색, 의료법 해석, 방어 진료 지침' : view === 'translate' ? '복약지도 및 소견서 임상 번역' : view === 'rag_review' ? '최신 논문 기반 응답 및 동료 의사 리뷰 워크플로우 연동' : view === 'recruit' ? '근무조건, 페이, 거리, 시간, 근무방법 기반 자동 추천' : '저장된 중요 레퍼런스 모음'}
             </p>
           </div>
           {(view === 'chat' || view === 'emergency' || view === 'legal') && messages.length > 0 && (
@@ -603,6 +607,7 @@ export default function DashboardPage() {
           {view === 'guide' && <PrescribeGuide />}
           {view === 'case' && <PrescribeGuide />}
           {view === 'translate' && <TranslateMCA />}
+          {view === 'recruit' && <RecruitMatch />}
           {view === 'settings' && <SettingsMyPage />}
 
         </main>

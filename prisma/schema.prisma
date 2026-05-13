@@ -30,13 +30,30 @@ model Department {
 
 model User {
   id            String             @id @default(uuid())
-  email         String             @unique
+  email         String?            @unique
+  doctorLicense String?            @unique
   passwordHash  String
   name          String
+  specialty     String?
+  phone         String?
+  telephone     String?
+  birthDate     String?
+  address       String?
+  jobTitle      String?
+  hospitalName  String?
+  institutionNumber String?
   role          String             @default("DOCTOR")
   points        Int                @default(0)
   title         String?
   status        String             @default("PENDING")
+  licenseVerifiedAt DateTime?
+  termsAgreedAt DateTime?
+  privacyAgreedAt DateTime?
+  patientInfoAgreedAt DateTime?
+  qualityImprovementAgreedAt DateTime?
+  marketingAgreedAt DateTime?
+  passwordResetTokenHash String?
+  passwordResetExpiresAt DateTime?
   hospitalId    String?
   hospital      Hospital?          @relation(fields: [hospitalId], references: [id])
   departmentId  String?
@@ -47,8 +64,78 @@ model User {
   bookmarks     Bookmark[]
   reviews       ReviewWorkflow[]   @relation("Reviewer")
   preferences   UserPreference[]
+  recruitProfile RecruitProfile?
+  recruitPostings RecruitPosting[]
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
+
+  @@index([doctorLicense])
+  @@index([status])
+}
+
+model VerifiedDoctorLicense {
+  id            String    @id @default(uuid())
+  licenseNumber String    @unique
+  doctorName    String?
+  specialty     String?
+  status        String    @default("ACTIVE")
+  source        String    @default("MANUAL_ALLOWLIST")
+  verifiedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([licenseNumber])
+  @@index([status])
+}
+
+model RecruitProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id])
+  mode            String   @default("SEEKING")
+  locationAddress String?
+  latitude        Float?
+  longitude       Float?
+  specialty       String?
+  workTypes       String?
+  workMethods     String?
+  workHours       String?
+  minPay          Int?
+  maxPay          Int?
+  priority        String   @default("BALANCED")
+  availableFrom   String?
+  intro           String?
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+
+  @@index([mode])
+  @@index([specialty])
+}
+
+model RecruitPosting {
+  id              String   @id @default(uuid())
+  ownerId         String
+  owner           User     @relation(fields: [ownerId], references: [id])
+  hospitalName    String
+  title           String
+  specialty       String?
+  locationAddress String
+  latitude        Float?
+  longitude       Float?
+  workTypes       String?
+  workMethods     String?
+  workHours       String?
+  payMin          Int?
+  payMax          Int?
+  priority        String   @default("BALANCED")
+  description     String?
+  status          String   @default("ACTIVE")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([specialty])
 }
 
 model UserPreference {
@@ -218,6 +305,10 @@ model Drug {
   reimbursement  String?
   type           String?
   releaseDate    String?
+  imageUrl       String?
+  imageSource    String?
+  imageStatus    String?
+  imageCheckedAt DateTime?
   usageFrequency Int      @default(0)
   rawJson        String?
   durInfo        String? // 병용금기, 임부/연령 금기 주의사항 (JSON 배열 or 텍스트)
@@ -233,5 +324,6 @@ model Drug {
   @@index([company])
   @@index([insuranceCode])
   @@index([atcCode])
+  @@index([imageStatus])
   @@index([usageFrequency])
 }
