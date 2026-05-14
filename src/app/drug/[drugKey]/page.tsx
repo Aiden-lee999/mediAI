@@ -86,6 +86,39 @@ function hasText(value: string) {
   return !!(value || '').trim() && value !== '데이터 없음';
 }
 
+function fallbackClinicalText(drug: DrugLike) {
+  const text = `${drug.productName || ''} ${drug.ingredientName || ''}`.toLowerCase();
+  const atc = (drug.atcCode || '').toUpperCase();
+  if (text.includes('아세트아미노펜') || text.includes('acetaminophen') || text.includes('paracetamol') || text.includes('프로파세타몰') || atc.startsWith('N02BE')) {
+    return {
+      efficacyText: '아세트아미노펜 계열 약제는 해열 및 진통 목적으로 사용됩니다. 두통, 치통, 근육통, 월경통 등 통증 완화와 감기 등에서 동반되는 발열 완화에 사용되는 성분입니다.',
+      usageText: '제품별 함량과 제형에 따라 용법·용량이 다르므로 허가사항과 처방 지시를 우선 확인해야 합니다. 동일 성분 중복 복용 및 1일 최대용량 초과를 피해야 합니다.',
+      cautionText: '과량 복용 시 간독성 위험이 증가합니다. 간질환, 만성 음주, 와파린 복용, 다른 감기약·진통제와의 중복 복용 여부를 확인하세요.',
+    };
+  }
+
+  const label = drug.ingredientName || drug.productName || '해당 약제';
+  return {
+    efficacyText: `${label}의 공식 효능·효과 원문을 확인 중입니다. 성분명, ATC 코드와 허가사항을 기준으로 보강됩니다.`,
+    usageText: `${label}의 용법·용량은 제형, 함량, 적응증, 환자 상태에 따라 달라질 수 있으므로 허가사항과 처방 지시를 우선 적용하세요.`,
+    cautionText: `${label} 복용 전 알레르기, 임신·수유, 소아·고령, 간·신장 기능, 병용약 및 중복 성분 여부를 확인하세요.`,
+  };
+}
+
+function makeImmediateDetail(drug: DrugLike) {
+  const fallback = fallbackClinicalText(drug);
+  return {
+    productName: drug.productName,
+    company: drug.company,
+    insuranceInfo: `${drug.insuranceCode || '-'} / ${drug.priceLabel || drug.reimbursement || '-'}`,
+    atcCode: drug.atcCode,
+    ingredientContent: drug.ingredientName,
+    imageUrl: drug.imageUrl,
+    packageInfo: [{ label: '-', standardCode: drug.standardCode || '-' }],
+    ...fallback,
+  };
+}
+
 export default function DrugDetailPage() {
   const router = useRouter();
   const params = useParams<{ drugKey: string }>();
@@ -111,13 +144,15 @@ export default function DrugDetailPage() {
   const [error, setError] = useState('');
   const [detail, setDetail] = useState<any>(null);
   const [durInfo, setDurInfo] = useState<any>(null);
+  const [durLoading, setDurLoading] = useState(false);
   const [llmInfo, setLlmInfo] = useState<any>(null);
+  const [llmLoading, setLlmLoading] = useState(false);
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
     efficacy: true,
     usage: false,
     caution: false,
-    insurance: true,
-    alt_dur: true,
+    insurance: false,
+    alt_dur: false,
   });
 
   useEffect(() => {
@@ -137,45 +172,28 @@ export default function DrugDetailPage() {
           setDrug(baseDrug);
         }
 
-        const [detailRes, durRes, llmRes] = await Promise.all([
-          fetch('/api/drugs/detail', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              productName: baseDrug.productName,
-              company: baseDrug.company,
-              standardCode: baseDrug.standardCode,
-              insuranceCode: baseDrug.insuranceCode,
-              atcCode: baseDrug.atcCode,
-            }),
+        setDetail(makeImmediateDetail(baseDrug));
+        setLoading(false);
+
+        const detailRes = await fetch('/api/drugs/detail', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            productName: baseDrug.productName,
+            company: baseDrug.company,
+            standardCode: baseDrug.standardCode,
+            insuranceCode: baseDrug.insuranceCode,
+            atcCode: baseDrug.atcCode,
+            fastOnly: true,
           }),
-          fetch('/api/drugs/dur', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              productName: baseDrug.productName,
-              ingredientName: baseDrug.ingredientName,
-            }),
-          }),
-          fetch('/api/ask', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              question: `약품명: ${baseDrug.productName}, 성분명: ${baseDrug.ingredientName}. 해당 약제의 최신 건강보험 심평원 급여 인정 기준(삭감 주의사항 포함)과 동일 성분의 대표적인 대체 약제 2~3가지를 추천해줘. "textbook" 블록과 "drug_cards" 블록을 같이 반환해줘.`,
-            }),
-          }),
-        ]);
+        });
 
         const detailData = await detailRes.json();
-        const durData = await durRes.json();
-        const llmData = await llmRes.json();
 
         if (detailData?.detail) setDetail(detailData.detail);
-        setDurInfo(durData || null);
-        setLlmInfo(llmData || null);
       } catch (e) {
         const err = e as Error;
-        setError(err.message || '상세 조회 중 오류가 발생했습니다.');
+        if (!detail) setError(err.message || '상세 조회 중 오류가 발생했습니다.');
       } finally {
         setLoading(false);
       }
@@ -184,6 +202,41 @@ export default function DrugDetailPage() {
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.drugKey]);
+
+  useEffect(() => {
+    if (!openSections.alt_dur || durInfo || durLoading || !drug.productName) return;
+
+    setDurLoading(true);
+    fetch('/api/drugs/dur', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productName: drug.productName,
+        ingredientName: drug.ingredientName,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => setDurInfo(data || null))
+      .catch(() => setDurInfo({ sections: [] }))
+      .finally(() => setDurLoading(false));
+  }, [openSections.alt_dur, durInfo, durLoading, drug.productName, drug.ingredientName]);
+
+  useEffect(() => {
+    if (!(openSections.insurance || openSections.alt_dur) || llmInfo || llmLoading || !drug.productName) return;
+
+    setLlmLoading(true);
+    fetch('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question: `약품명: ${drug.productName}, 성분명: ${drug.ingredientName}. 해당 약제의 최신 건강보험 심평원 급여 인정 기준(삭감 주의사항 포함)과 동일 성분의 대표적인 대체 약제 2~3가지를 추천해줘. "textbook" 블록과 "drug_cards" 블록을 같이 반환해줘.`,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => setLlmInfo(data || null))
+      .catch(() => setLlmInfo({ blocks: [], chat_reply: '' }))
+      .finally(() => setLlmLoading(false));
+  }, [openSections.insurance, openSections.alt_dur, llmInfo, llmLoading, drug.productName, drug.ingredientName]);
 
   const longText = useMemo(() => extractLongText(detail), [detail]);
   const alternatives = useMemo(() => {
@@ -329,7 +382,7 @@ export default function DrugDetailPage() {
                     </button>
                     {openSections.insurance && (
                       <>
-                        <div className="px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed text-slate-700">{cleanText(llmInfo?.chat_reply) || '급여 분석 정보가 없습니다.'}</div>
+                        <div className="px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed text-slate-700">{llmLoading ? '급여 기준을 불러오는 중입니다...' : (cleanText(llmInfo?.chat_reply) || '급여 분석 정보가 없습니다.')}</div>
                         {cautionBlocks.length > 0 && (
                           <div className="px-4 pb-3 space-y-2">
                             {cautionBlocks.map((block: any, idx: number) => (
@@ -352,7 +405,9 @@ export default function DrugDetailPage() {
                     {openSections.alt_dur && <div className="px-4 py-3 space-y-4">
                       <div>
                         <div className="text-xs font-bold text-slate-600 mb-2">대체가능의약품</div>
-                        {alternatives.length > 0 ? (
+                        {llmLoading ? (
+                          <div className="text-sm text-slate-500">대체약제 정보를 불러오는 중입니다...</div>
+                        ) : alternatives.length > 0 ? (
                           <ul className="space-y-2 text-sm">
                             {alternatives.map((d: any, idx: number) => (
                               <li key={idx} className="rounded border border-slate-200 p-2">
@@ -369,7 +424,9 @@ export default function DrugDetailPage() {
                       <div>
                         <div className="text-xs font-bold text-slate-600 mb-2">DUR 점검</div>
                         <div className="space-y-2">
-                          {durSections.map((sec: any, sIdx: number) => {
+                          {durLoading ? (
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-500">DUR 정보를 불러오는 중입니다...</div>
+                          ) : durSections.map((sec: any, sIdx: number) => {
                             const hasItems = (sec.total || 0) > 0 && Array.isArray(sec.items) && sec.items.length > 0;
                             return (
                               <div

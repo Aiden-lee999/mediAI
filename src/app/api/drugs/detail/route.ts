@@ -14,6 +14,7 @@ type DetailBody = {
   standardCode?: string;
   insuranceCode?: string;
   atcCode?: string;
+  fastOnly?: boolean;
 };
 
 type CompactImageIndexRow = {
@@ -110,6 +111,47 @@ function cleanLongText(value: string) {
 
   const output = deduped.join('\n').trim();
   return output || '';
+}
+
+function isPlaceholderDetailText(value: string) {
+  const clean = normalizeLine(value || '');
+  return !clean || ['데이터 없음', '효능효과 정보 확인중', '주의사항 정보 확인중', '식별정보 확인중', '-'].includes(clean);
+}
+
+function ingredientFallbackText(productName: string, ingredientName?: string, atcCode?: string) {
+  const text = `${productName || ''} ${ingredientName || ''}`.toLowerCase();
+  const atc = (atcCode || '').toUpperCase();
+
+  if (text.includes('아세트아미노펜') || text.includes('acetaminophen') || text.includes('paracetamol') || text.includes('프로파세타몰') || text.includes('propacetamol') || atc.startsWith('N02BE')) {
+    return {
+      efficacy: '아세트아미노펜 계열 약제는 해열 및 진통 목적으로 사용됩니다. 두통, 치통, 근육통, 월경통 등 통증 완화와 감기 등에서 동반되는 발열 완화에 사용되는 성분입니다.',
+      usage: '제품별 함량과 제형에 따라 용법·용량이 다르므로 허가사항과 처방 지시를 우선 확인해야 합니다. 동일 성분 중복 복용 및 1일 최대용량 초과를 피해야 합니다.',
+      caution: '과량 복용 시 간독성 위험이 증가합니다. 간질환, 만성 음주, 와파린 복용, 다른 감기약·진통제와의 중복 복용 여부를 확인하세요.',
+    };
+  }
+
+  if (text.includes('이부프로펜') || text.includes('ibuprofen') || atc.startsWith('M01AE')) {
+    return {
+      efficacy: '이부프로펜은 비스테로이드성 소염진통제(NSAID)로 통증, 염증 및 발열 완화에 사용됩니다.',
+      usage: '위장관 부담을 줄이기 위해 식후 복용이 권장되는 경우가 많으며, 제품별 허가 용량을 확인해야 합니다.',
+      caution: '소화성 궤양, 신기능 저하, 항응고제 복용, NSAID 과민 병력이 있는 경우 주의가 필요합니다.',
+    };
+  }
+
+  if (text.includes('메트포르민') || text.includes('metformin') || atc.startsWith('A10BA')) {
+    return {
+      efficacy: '메트포르민은 제2형 당뇨병에서 혈당 조절을 위해 사용되는 경구 혈당강하제입니다.',
+      usage: '위장관 이상반응을 줄이기 위해 식사와 함께 복용하는 경우가 많으며, 신기능에 따라 용량 조절이 필요할 수 있습니다.',
+      caution: '신기능 저하, 조영제 사용 예정, 중증 감염·탈수·저산소증 상황에서는 젖산산증 위험을 고려해야 합니다.',
+    };
+  }
+
+  const label = ingredientName || productName || '해당 약제';
+  return {
+    efficacy: `${label}의 공식 효능·효과 원문이 로컬 DB에 충분히 저장되어 있지 않습니다. 제품명, 성분명, ATC 코드와 허가사항을 기준으로 상세 원문을 추가 확인하세요.`,
+    usage: `${label}의 용법·용량은 제형, 함량, 적응증, 환자 상태에 따라 달라질 수 있으므로 허가사항과 처방 지시를 우선 적용하세요.`,
+    caution: `${label} 복용 전 알레르기, 임신·수유, 소아·고령, 간·신장 기능, 병용약 및 중복 성분 여부를 확인하세요.`,
+  };
 }
 
 function pickLongestText(item: any, keys: string[]) {
@@ -457,6 +499,79 @@ export async function POST(req: Request) {
         standardDigits,
       ])
     );
+
+    if (body.fastOnly) {
+      const dbDrug = await prisma.drug.findFirst({
+        where: {
+          OR: [
+            ...(body.standardCode ? [{ standardCode: body.standardCode }] : []),
+            ...(body.insuranceCode ? [{ insuranceCode: body.insuranceCode }] : []),
+            { productName: { contains: body.productName } },
+          ],
+        },
+        select: {
+          productName: true,
+          ingredientName: true,
+          company: true,
+          reimbursement: true,
+          priceLabel: true,
+          insuranceCode: true,
+          standardCode: true,
+          atcCode: true,
+          type: true,
+          releaseDate: true,
+          imageUrl: true,
+          efficacy: true,
+          precaution: true,
+          identification: true,
+          rawJson: true,
+        },
+      });
+
+      const detailProductName = pick(dbDrug || {}, ['productName']) || body.productName;
+      const ingredientName = pick(dbDrug || {}, ['ingredientName']);
+      const atcCode = pick(dbDrug || {}, ['atcCode']) || body.atcCode || '-';
+      const fallback = ingredientFallbackText(detailProductName, ingredientName, atcCode);
+      const efficacyText = cleanLongText(pick(dbDrug || {}, ['efficacy']));
+      const usageText = cleanLongText(pick(dbDrug || {}, ['identification']));
+      const cautionText = cleanLongText(pick(dbDrug || {}, ['precaution']));
+      const insuranceCode = pick(dbDrug || {}, ['insuranceCode']) || body.insuranceCode || '-';
+      const standardCode = pick(dbDrug || {}, ['standardCode']) || body.standardCode || '-';
+      const priceLabel = pick(dbDrug || {}, ['priceLabel']);
+      const reimbursement = pick(dbDrug || {}, ['reimbursement']) || '급여구분미확인';
+
+      return NextResponse.json({
+        success: true,
+        detail: {
+          productName: detailProductName,
+          type: pick(dbDrug || {}, ['type']) || '-',
+          company: pick(dbDrug || {}, ['company']) || body.company || '-',
+          seller: pick(dbDrug || {}, ['company']) || body.company || '-',
+          productionStatus: pick(dbDrug || {}, ['releaseDate']) || '-',
+          insuranceInfo: [insuranceCode, priceLabel, reimbursement].filter(Boolean).join(' / ') || '-',
+          ministryClass: '-',
+          kimsClass: pick(dbDrug || {}, ['type']) || '-',
+          atcCode,
+          ingredientCode: ingredientName || '-',
+          ingredientContent: ingredientName || '-',
+          efficacyText: isPlaceholderDetailText(efficacyText) ? fallback.efficacy : efficacyText,
+          usageText: isPlaceholderDetailText(usageText) ? fallback.usage : usageText,
+          cautionText: isPlaceholderDetailText(cautionText) ? fallback.caution : cautionText,
+          durSections: [],
+          unavailableOfficialSections: [],
+          additives: '-',
+          packageInfo: [{ label: '-', standardCode }],
+          imageUrl: buildImageUrl(pick(dbDrug || {}, ['imageUrl']), extractImageFromRawJson((dbDrug as any)?.rawJson || null)),
+          ingredientName,
+          permitNo: '-',
+          className: pick(dbDrug || {}, ['type']) || '-',
+          standardCode,
+          insuranceCode,
+          reimbursement,
+          raw: { dbDrug },
+        },
+      });
+    }
 
     const easyDrug = PUBLIC_DRUG_API_ENDPOINTS.find((s) => s.baseUrl.includes('DrbEasyDrugInfoService'));
     const permitInfo = PUBLIC_DRUG_API_ENDPOINTS.find((s) => s.baseUrl.includes('DrugPrdtPrmsnInfoService07'));

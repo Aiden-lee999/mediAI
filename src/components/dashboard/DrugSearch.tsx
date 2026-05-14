@@ -273,7 +273,7 @@ export default function DrugSearch() {
     <div className="w-full  space-y-6">
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
         <h2 className="text-xl font-extrabold text-blue-800 mb-2"> 스마트 약제조회 및 DUR 보조</h2>
-        <p className="text-sm text-slate-500 mb-6">30만 건의 의약품 데이터베이스를 실시간으로 검색하여 급여 기준, 대체 약제, DUR(병용금기) 정보를 제공합니다.</p>
+        <p className="text-sm text-slate-500 mb-6">30만 건의 의약품 데이터베이스를 빠르게 검색합니다. 급여조회, 대체약제, DUR 점검, 복약지도는 약을 클릭해 상세 화면에서 확인하세요.</p>
         
         <div className="relative mb-6">
           <input
@@ -294,7 +294,7 @@ export default function DrugSearch() {
         </div>
 
         <div className="flex border-b border-slate-200">
-          {['검색결과', '급여조회', '대체약제', 'DUR 점검', '복약지도'].map(tab => (
+          {['검색결과'].map(tab => (
              <button
                key={tab}
                className={`py-3 px-6 font-bold text-sm border-b-2 transition ${activeTab === tab ? 'border-blue-600 text-blue-700 bg-blue-50/50' : 'border-transparent text-slate-500 hover:text-slate-800'}`}

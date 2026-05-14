@@ -1,5 +1,5 @@
 ﻿import { NextResponse } from 'next/server';
-import { loadIngredientCodeMap, loadRichDrugPrices, searchProductsByIngredient } from '@/lib/drugPricesCsv';
+import { loadIngredientCodeMap, loadRichDrugPrices, searchProductsByIngredient, type DrugPriceData } from '@/lib/drugPricesCsv';
 import { prisma } from '@/lib/prisma';
 import { callPublicDrugApi, extractItems } from '@/lib/publicDrugApiClient';
 import { DATA_GO_KR_FALLBACK_SERVICE_KEY, PUBLIC_DRUG_API_ENDPOINTS } from '@/lib/publicDrugApiCatalog';
@@ -38,6 +38,7 @@ type QueryPayload = {
   ingredientName?: string;
   company?: string;
   limit?: number;
+  includeImages?: boolean;
 };
 
 type GrainImageIndexEntry = {
@@ -61,6 +62,7 @@ type AcetaminophenSourceRow = {
   type: string;
   releaseDate: string;
   status: string;
+  price: string;
 };
 
 type GrainImageIndex = {
@@ -90,6 +92,21 @@ let grainImageIndexCache: { expiresAt: number; index: GrainImageIndex } | null =
 let permitImageIndexCache: { expiresAt: number; index: PermitImageIndex } | null = null;
 let compactImageRowsCache: { expiresAt: number; rows: CompactImageIndexRow[] } | null = null;
 const liveGrainSearchCache = new Map<string, { expiresAt: number; items: SearchItem[] }>();
+
+const EMPTY_GRAIN_IMAGE_INDEX: GrainImageIndex = {
+  rows: [],
+  byStdCode: new Map<string, string>(),
+  byItemSeq: new Map<string, string>(),
+  byStdCodeName: new Map<string, string>(),
+  byItemSeqName: new Map<string, string>(),
+};
+
+const EMPTY_PERMIT_IMAGE_INDEX: PermitImageIndex = {
+  byCode: new Map<string, string>(),
+  byCodeName: new Map<string, string>(),
+  byNameCompany: new Map<string, string>(),
+  byName: new Map<string, string>(),
+};
 
 const ACETAMINOPHEN_PRODUCT_HINTS = [
   '판피린큐액',
@@ -832,6 +849,35 @@ async function loadAcetaminophenSourceRows() {
   }
 
   try {
+    const jsonPath = path.join(process.cwd(), 'data', 'acetaminophen_products.json');
+    try {
+      const jsonText = await fs.readFile(jsonPath, 'utf8');
+      const jsonRows = JSON.parse(jsonText) as AcetaminophenSourceRow[];
+      const normalizedRows = jsonRows
+        .map((row) => ({
+          ...row,
+          code: toDigits(String(row.code || '')),
+          productName: String(row.productName || '').trim(),
+          productEnglishName: String(row.productEnglishName || '').trim(),
+          company: String(row.company || '').trim(),
+          ingredient: String(row.ingredient || '').trim(),
+          additive: String(row.additive || '').trim(),
+          atcCode: String(row.atcCode || '').trim(),
+          type: normalizeDrugType(String(row.type || '')),
+          releaseDate: String(row.releaseDate || '').trim(),
+          status: String(row.status || '').trim(),
+          price: String(row.price || '').trim().replace(/,/g, ''),
+        }))
+        .filter((row) => row.code && row.productName);
+      acetaminophenSourceRowsCache = {
+        expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+        rows: normalizedRows,
+      };
+      return normalizedRows;
+    } catch {
+      // Fall back to parsing the CSV below.
+    }
+
     const filePath = path.join(process.cwd(), 'data', 'acetaminophen_products.csv');
     const text = await fs.readFile(filePath, 'utf8');
     const lines = text.split(/\r?\n/).filter((line) => line.trim());
@@ -872,6 +918,7 @@ async function loadAcetaminophenSourceRows() {
         type: normalizeDrugType(cols[idxType] || ''),
         releaseDate: (cols[idxReleaseDate] || '').trim(),
         status: (cols[idxStatus] || '').trim(),
+        price: '',
       } satisfies AcetaminophenSourceRow;
     }).filter((row): row is AcetaminophenSourceRow => row !== null);
 
@@ -958,18 +1005,21 @@ async function runAcetaminophenSourceSearch(resultLimit: number, company?: strin
   const filteredRows = companyFilter
     ? sourceRows.filter((row) => normalizeCompanyKey(row.company).includes(companyFilter))
     : sourceRows;
-  const csvPriceMap = await loadRichDrugPrices();
+  const hasPrecomputedPrices = filteredRows.some((row) => hasPositivePrice(row.price));
+  const csvPriceMap = hasPrecomputedPrices ? new Map<string, DrugPriceData>() : await loadRichDrugPrices();
   const csvPriceByName = new Map<string, string>();
 
-  for (const data of csvPriceMap.values()) {
-    if (!data.productName || !hasPositivePrice(data.price)) continue;
-    const price = String(data.price).trim().replace(/,/g, '');
-    const nameKeys = [
-      normalizeDrugNameKey(data.productName),
-      normalizeDrugNameKey(normalizeBaseProductName(data.productName)),
-    ].filter(Boolean);
-    for (const key of nameKeys) {
-      if (!csvPriceByName.has(key)) csvPriceByName.set(key, price);
+  if (!hasPrecomputedPrices) {
+    for (const data of csvPriceMap.values()) {
+      if (!data.productName || !hasPositivePrice(data.price)) continue;
+      const price = String(data.price).trim().replace(/,/g, '');
+      const nameKeys = [
+        normalizeDrugNameKey(data.productName),
+        normalizeDrugNameKey(normalizeBaseProductName(data.productName)),
+      ].filter(Boolean);
+      for (const key of nameKeys) {
+        if (!csvPriceByName.has(key)) csvPriceByName.set(key, price);
+      }
     }
   }
 
@@ -977,7 +1027,7 @@ async function runAcetaminophenSourceSearch(resultLimit: number, company?: strin
     const csvData = buildCsvLookupCodes(row.code, row.code).map((code) => csvPriceMap.get(code)).find(Boolean);
     const namePrice = csvPriceByName.get(normalizeDrugNameKey(row.productName)) ||
       csvPriceByName.get(normalizeDrugNameKey(normalizeBaseProductName(row.productName)));
-    const rawPrice = csvData?.price && hasPositivePrice(csvData.price) ? csvData.price : namePrice;
+    const rawPrice = row.price && hasPositivePrice(row.price) ? row.price : (csvData?.price && hasPositivePrice(csvData.price) ? csvData.price : namePrice);
     const priceLabel = rawPrice && hasPositivePrice(rawPrice) ? `${String(rawPrice).trim().replace(/,/g, '')}원 / 급여구분미확인` : '';
     return makeAcetaminophenSourceItem(row, priceLabel, '');
   });
@@ -1410,8 +1460,9 @@ async function runSearch(body: QueryPayload) {
 
   const csvPriceMap = needsCsvPrice ? await loadRichDrugPrices() : new Map();
   const ingredientCodeMap = needsCsvIngredient ? await loadIngredientCodeMap() : new Map();
-  const grainImageIndex = await loadGrainImageIndex();
-  const permitImageIndex = await loadPermitImageIndex();
+  const shouldLoadImageIndexes = body.includeImages === true;
+  const grainImageIndex = shouldLoadImageIndexes ? await loadGrainImageIndex() : EMPTY_GRAIN_IMAGE_INDEX;
+  const permitImageIndex = shouldLoadImageIndexes ? await loadPermitImageIndex() : EMPTY_PERMIT_IMAGE_INDEX;
 
   const finalItems: SearchItem[] = drugs.map((item: (typeof drugs)[number]) => {
     const standardCode = (item.standardCode || '').trim();
