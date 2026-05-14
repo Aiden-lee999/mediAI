@@ -1,150 +1,334 @@
 'use client';
-import { useState } from 'react';
+
+import { useMemo, useRef, useState } from 'react';
+
+type Speaker = 'doctor' | 'patient';
+
+type LanguageOption = {
+  code: string;
+  label: string;
+  apiLabel: string;
+  speechCode: string;
+  flag: string;
+};
+
+type ConversationTurn = {
+  id: string;
+  speaker: Speaker;
+  sourceLanguage: string;
+  targetLanguage: string;
+  original: string;
+  correctedInput: string;
+  translation: string;
+  backTranslation: string;
+  note: string;
+  medicalTerms: string[];
+};
+
+type SpeechRecognitionEventResult = {
+  isFinal: boolean;
+  [index: number]: { transcript: string };
+};
+
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: { results: SpeechRecognitionEventResult[] }) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+declare global {
+  interface Window {
+    SpeechRecognition?: new () => SpeechRecognitionLike;
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+  }
+}
+
+const LANGUAGES: LanguageOption[] = [
+  { code: 'en', label: 'English', apiLabel: '영어', speechCode: 'en-US', flag: '🇺🇸' },
+  { code: 'zh', label: '中文', apiLabel: '중국어', speechCode: 'zh-CN', flag: '🇨🇳' },
+  { code: 'ja', label: '日本語', apiLabel: '일본어', speechCode: 'ja-JP', flag: '🇯🇵' },
+  { code: 'vi', label: 'Tiếng Việt', apiLabel: '베트남어', speechCode: 'vi-VN', flag: '🇻🇳' },
+  { code: 'ru', label: 'Русский', apiLabel: '러시아어', speechCode: 'ru-RU', flag: '🇷🇺' },
+  { code: 'mn', label: 'Монгол', apiLabel: '몽골어', speechCode: 'mn-MN', flag: '🇲🇳' },
+  { code: 'th', label: 'ไทย', apiLabel: '태국어', speechCode: 'th-TH', flag: '🇹🇭' },
+  { code: 'id', label: 'Bahasa Indonesia', apiLabel: '인도네시아어', speechCode: 'id-ID', flag: '🇮🇩' },
+  { code: 'ar', label: 'العربية', apiLabel: '아랍어', speechCode: 'ar-SA', flag: '🇸🇦' },
+];
+
+const QUICK_PHRASES = [
+  '어디가 가장 불편하세요?',
+  '통증은 언제부터 시작됐나요?',
+  '이 약은 하루 세 번 식후에 드세요.',
+  '발진, 호흡곤란, 얼굴 부종이 생기면 바로 중단하고 병원에 오세요.',
+  '임신 가능성이나 수유 중인지 확인이 필요합니다.',
+  '복용 중인 약이나 알레르기가 있나요?',
+];
+
+function getSpeechLang(speaker: Speaker, patientLanguage: LanguageOption) {
+  return speaker === 'doctor' ? 'ko-KR' : patientLanguage.speechCode;
+}
+
+function getLanguageLabels(speaker: Speaker, patientLanguage: LanguageOption) {
+  return speaker === 'doctor'
+    ? { sourceLanguage: '한국어', targetLanguage: patientLanguage.apiLabel, targetSpeechCode: patientLanguage.speechCode }
+    : { sourceLanguage: patientLanguage.apiLabel, targetLanguage: '한국어', targetSpeechCode: 'ko-KR' };
+}
 
 export default function TranslateMCA() {
-  const [transInput, setTransInput] = useState('');
-  const [transLang, setTransLang] = useState('en');
-  const [transOutput, setTransOutput] = useState('');
-  const [transNote, setTransNote] = useState('');
+  const [input, setInput] = useState('');
+  const [languageCode, setLanguageCode] = useState('en');
+  const [speaker, setSpeaker] = useState<Speaker>('doctor');
+  const [turns, setTurns] = useState<ConversationTurn[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [status, setStatus] = useState('');
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
-  const handleTranslate = async () => {
-    if (!transInput.trim()) return;
-    setTransOutput('번역 중입니다... 의학 용어를 적절한 모국어 표현으로 매핑하고 있습니다.');
-    setTransNote('');
-    
+  const patientLanguage = useMemo(
+    () => LANGUAGES.find((lang) => lang.code === languageCode) || LANGUAGES[0],
+    [languageCode]
+  );
+
+  const currentLabels = getLanguageLabels(speaker, patientLanguage);
+  const speechSupported = typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  const speak = (text: string, lang: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis || !text.trim()) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    utterance.rate = 0.92;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopListening = () => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setListening(false);
+  };
+
+  const startListening = () => {
+    if (!speechSupported) {
+      setStatus('이 브라우저는 음성 인식을 지원하지 않습니다. 모바일 Chrome 또는 Safari에서 다시 시도하세요.');
+      return;
+    }
+
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) return;
+
+    const recognition = new Recognition();
+    recognition.lang = getSpeechLang(speaker, patientLanguage);
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      let transcript = '';
+      for (const result of Array.from(event.results)) {
+        transcript += result[0]?.transcript || '';
+      }
+      setInput(transcript.trim());
+    };
+    recognition.onerror = (event) => {
+      setStatus(`음성 인식 오류: ${event.error || '알 수 없는 오류'}`);
+      setListening(false);
+    };
+    recognition.onend = () => setListening(false);
+    recognitionRef.current = recognition;
+    setStatus(`${speaker === 'doctor' ? '의료진 한국어' : patientLanguage.label} 음성을 듣고 있습니다.`);
+    setListening(true);
+    recognition.start();
+  };
+
+  const handleTranslate = async (text = input) => {
+    const trimmed = text.trim();
+    if (!trimmed || loading) return;
+
+    setLoading(true);
+    setStatus('의학 용어와 음성 인식 오류를 보정해 자연스럽게 통역 중입니다...');
+
     try {
+      const context = turns.slice(-6).map((turn) => ({
+        speaker: turn.speaker,
+        original: turn.correctedInput || turn.original,
+        translation: turn.translation,
+      }));
+
       const res = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          inputText: transInput,
-          sourceLanguage: '한국어',
-          targetLanguage: transLang === 'en' ? '영어' : transLang === 'vi' ? '베트남어' : transLang === 'ru' ? '러시아어' : transLang === 'zh' ? '중국어' : '몽골어'
-        })
+        body: JSON.stringify({
+          inputText: trimmed,
+          sourceLanguage: currentLabels.sourceLanguage,
+          targetLanguage: currentLabels.targetLanguage,
+          speaker,
+          mode: 'clinical_conversation',
+          context,
+        }),
       });
-      
+
       const data = await res.json();
-      
-      if (res.ok) {
-        setTransOutput(data.translation);
-        if (data.medicalNote) {
-            setTransNote(`Medical Note: ${data.medicalNote}`);
-        }
-      } else {
-        setTransOutput(`번역 오류가 발생했습니다: ${data.error || res.statusText}`);
-      }
+      if (!res.ok) throw new Error(data?.error || res.statusText);
+
+      const turn: ConversationTurn = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        speaker,
+        sourceLanguage: currentLabels.sourceLanguage,
+        targetLanguage: currentLabels.targetLanguage,
+        original: trimmed,
+        correctedInput: data.correctedInput || trimmed,
+        translation: data.translation || '',
+        backTranslation: data.backTranslation || '',
+        note: data.note || data.medicalNote || '',
+        medicalTerms: Array.isArray(data.medicalTerms) ? data.medicalTerms : [],
+      };
+
+      setTurns((prev) => [...prev, turn]);
+      setInput('');
+      setStatus('통역 완료');
+      speak(turn.translation, currentLabels.targetSpeechCode);
     } catch (err: any) {
-      setTransOutput(`네트워크 오류가 발생했습니다: ${err.message}`);
+      setStatus(`통역 오류: ${err?.message || '요청 실패'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
+  const toggleSpeaker = () => {
+    stopListening();
+    setSpeaker((prev) => (prev === 'doctor' ? 'patient' : 'doctor'));
+    setInput('');
+  };
+
   return (
-    <div className="w-full  space-y-6">
-      <div className="bg-indigo-600 text-white p-6 rounded-xl shadow-lg border border-indigo-700">
-        <h2 className="text-xl font-extrabold mb-2 flex items-center gap-2"> 다국어 진료 어시스턴트 (MCA)</h2>
-        <p className="text-indigo-100 text-sm">일반 번역기로는 불가능한 '의학 전문 용어(증상, 통증 양상, 복약지도)'를 외국인 환자의 모국어로 정확하고 쉽게 양방향 통역 및 생성합니다.</p>
+    <div className="mx-auto w-full max-w-5xl space-y-4 pb-24 md:pb-6">
+      <div className="rounded-3xl border border-indigo-100 bg-gradient-to-br from-indigo-700 via-blue-700 to-sky-600 p-5 text-white shadow-xl md:p-7">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="mb-2 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-bold text-blue-50">Mobile-first clinical interpreter</p>
+            <h2 className="text-2xl font-black md:text-3xl">다국어 진료 어시스턴트 MCA</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-50">구글 번역기처럼 빠르고 자연스럽게, 진료실 문맥·복약지도·증상 표현·의학 용어를 보정해 양방향 음성/채팅 통역합니다.</p>
+          </div>
+          <div className="rounded-2xl bg-white/15 p-3 text-sm backdrop-blur">
+            <div className="font-bold">환자 언어</div>
+            <select
+              className="mt-2 w-full rounded-xl border border-white/20 bg-white px-3 py-2 font-bold text-slate-900 outline-none"
+              value={languageCode}
+              onChange={(event) => setLanguageCode(event.target.value)}
+            >
+              {LANGUAGES.map((lang) => (
+                <option key={lang.code} value={lang.code}>{lang.flag} {lang.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-         {/* 좌측 입력 영역 */}
-         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4"> 복약지도 및 동의서 작성</h3>
-            <textarea 
-               className="w-full text-slate-800 border border-slate-300 rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[160px] resize-y mb-4" 
-               placeholder="한국어로 약의 주의사항이나 수술 동의 내용을 입력하세요.&#13;&#10;예: '이 항생제는 알레르기 반응이 있을 수 있으니 복용 후 발진이 생기면 즉시 중단하세요.'"
-               value={transInput}
-               onChange={(e) => setTransInput(e.target.value)}
-            />
-            
-            <div className="flex gap-3 mb-2">
-               <button className="flex-1 border border-slate-200 bg-slate-50 text-slate-600 rounded-lg py-2 text-sm font-medium hover:bg-slate-100">
-                  ️ 음성 인식 (한국어)
-               </button>
-               <button className="flex-1 border border-slate-200 bg-slate-50 text-slate-600 rounded-lg py-2 text-sm font-medium hover:bg-slate-100">
-                   병원 양식 사진 찍기
-               </button>
-            </div>
-         </div>
-
-         {/* 우측 출력 영역 */}
-         <div className="bg-indigo-50 p-6 rounded-xl shadow-sm border border-indigo-100 flex flex-col justify-between">
-            <div>
-               <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-indigo-900 flex items-center gap-2">환자 모국어 번역 결과</h3>
-                  <select 
-                     className="border border-indigo-200 rounded-lg px-3 py-1 text-sm bg-white text-indigo-800 font-bold outline-none"
-                     value={transLang}
-                     onChange={(e) => setTransLang(e.target.value)}
-                  >
-                     <option value="en">미국 영어 (EN)</option>
-                     <option value="vi">베트남어 (VI)</option>
-                     <option value="ru">러시아어 (RU)</option>
-                     <option value="zh">중국어 (ZH)</option>
-                     <option value="mn">몽골어 (MN)</option>
-                  </select>
-               </div>
-
-               {transOutput ? (
-                  <div className="space-y-4 animate-fadeIn">
-                     <div className="bg-white p-5 rounded-xl border border-indigo-200 text-indigo-900 text-[15px] whitespace-pre-wrap leading-relaxed shadow-sm">
-                        {transOutput}
-                     </div>
-                     {transNote && (
-                        <div className="bg-red-50 p-3 rounded-lg border border-red-200 text-xs text-red-800 font-medium">
-                           <span className="font-bold"> 임상 번역 Note:</span> {transNote}
-                        </div>
-                     )}
-                  </div>
-               ) : (
-                  <div className="flex flex-col items-center justify-center h-40 text-indigo-300 opacity-80">
-                     <div className="text-4xl mb-2">A / 文</div>
-                     <div className="text-sm font-bold">임상 번역 대기 중...</div>
-                  </div>
-               )}
-            </div>
-
-            <div className="flex gap-3 mt-6">
-               <button 
-                  onClick={handleTranslate}
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition shadow-md"
-               >
-                  의학 전문 번역 실행
-               </button>
-               <button className="px-6 border border-indigo-300 bg-white text-indigo-600 rounded-xl py-3 font-bold text-sm tracking-wide shadow-sm" onClick={()=>window.print()}>
-                  인쇄용 팝업
-               </button>
-            </div>
-         </div>
+      <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1 text-sm font-black">
+        <button
+          onClick={() => setSpeaker('doctor')}
+          className={`rounded-xl px-3 py-3 transition ${speaker === 'doctor' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}
+        >
+          의료진 → 환자
+        </button>
+        <button
+          onClick={() => setSpeaker('patient')}
+          className={`rounded-xl px-3 py-3 transition ${speaker === 'patient' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
+        >
+          환자 → 의료진
+        </button>
       </div>
 
-      {/* 통증 표현 양방향 통역 */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mt-6 relative overflow-hidden">
-         <div className="absolute right-0 top-0 w-64 h-full bg-slate-50 -z-10 rounded-l-[100px]"></div>
-         <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">의료 특화 양방향 텍스트/표현 차트</h3>
-         <p className="text-sm text-slate-500 mb-4">환자가 말하는 애매한 통증 표현(예: 쑤신다, 우리하다)을 한국어 임상 용어로 자동 매핑합니다.</p>
-         
-         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-slate-100 p-3 rounded-lg text-center cursor-pointer hover:bg-blue-50 border border-slate-200">
-               <div className="text-2xl mb-1"></div>
-               <div className="font-bold text-sm text-slate-800">찌릿찌릿하다</div>
-               <div className="text-xs text-slate-500 mt-1">Sharp / Shooting</div>
+      <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-sm font-black text-slate-800">{currentLabels.sourceLanguage} → {currentLabels.targetLanguage}</div>
+            <div className="text-xs text-slate-500">{speaker === 'doctor' ? '의료진 설명을 환자 모국어로 쉽게 전달합니다.' : '환자 표현을 한국어 임상 표현으로 정리합니다.'}</div>
+          </div>
+          <button onClick={toggleSpeaker} className="rounded-full border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">방향 전환</button>
+        </div>
+
+        <textarea
+          className="min-h-28 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-4 text-base text-slate-900 outline-none focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+          placeholder={speaker === 'doctor' ? '예: 이 약은 하루 세 번 식후에 드시고, 숨이 차거나 발진이 생기면 바로 중단하세요.' : '환자 말을 입력하거나 마이크로 녹음하세요.'}
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+        />
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {QUICK_PHRASES.map((phrase) => (
+            <button
+              key={phrase}
+              onClick={() => setInput(phrase)}
+              className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:border-indigo-200 hover:bg-indigo-50"
+            >
+              {phrase}
+            </button>
+          ))}
+        </div>
+
+        {status && <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">{status}</div>}
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <button
+            onClick={listening ? stopListening : startListening}
+            className={`rounded-2xl py-4 text-sm font-black text-white shadow-lg transition ${listening ? 'bg-red-500 shadow-red-200' : 'bg-slate-900 shadow-slate-200'}`}
+          >
+            {listening ? '■ 녹음 중지' : '🎙️ 말로 입력'}
+          </button>
+          <button
+            onClick={() => handleTranslate()}
+            disabled={loading || !input.trim()}
+            className="rounded-2xl bg-indigo-600 py-4 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? '통역 중...' : '통역하고 읽어주기'}
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {turns.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-8 text-center text-slate-400">
+            <div className="text-4xl">💬</div>
+            <div className="mt-2 text-sm font-bold">대화를 시작하면 자연스러운 양방향 통역 기록이 여기에 쌓입니다.</div>
+          </div>
+        ) : (
+          turns.map((turn) => (
+            <div key={turn.id} className={`rounded-3xl border p-4 shadow-sm ${turn.speaker === 'doctor' ? 'border-blue-100 bg-blue-50' : 'border-emerald-100 bg-emerald-50'}`}>
+              <div className="mb-2 flex items-center justify-between gap-2 text-xs font-black text-slate-500">
+                <span>{turn.speaker === 'doctor' ? '의료진' : '환자'} · {turn.sourceLanguage} → {turn.targetLanguage}</span>
+                <button onClick={() => speak(turn.translation, turn.speaker === 'doctor' ? patientLanguage.speechCode : 'ko-KR')} className="rounded-full bg-white px-3 py-1 text-slate-600 shadow-sm">다시 듣기</button>
+              </div>
+              <div className="rounded-2xl bg-white p-3 text-sm text-slate-600">
+                <div className="font-bold text-slate-400">원문/보정</div>
+                <div className="mt-1">{turn.correctedInput || turn.original}</div>
+              </div>
+              <div className="mt-3 rounded-2xl bg-slate-900 p-4 text-base font-semibold leading-7 text-white whitespace-pre-wrap">
+                {turn.translation}
+              </div>
+              {turn.backTranslation && (
+                <div className="mt-2 text-xs text-slate-500">역번역 확인: {turn.backTranslation}</div>
+              )}
+              {turn.medicalTerms.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {turn.medicalTerms.map((term) => <span key={term} className="rounded-full bg-white px-2 py-1 text-xs font-bold text-indigo-700">{term}</span>)}
+                </div>
+              )}
+              {turn.note && <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">임상 메모: {turn.note}</div>}
             </div>
-            <div className="bg-slate-100 p-3 rounded-lg text-center cursor-pointer hover:bg-blue-50 border border-slate-200">
-               <div className="text-2xl mb-1"></div>
-               <div className="font-bold text-sm text-slate-800">쑤신다</div>
-               <div className="text-xs text-slate-500 mt-1">Throbbing / Aching</div>
-            </div>
-            <div className="bg-slate-100 p-3 rounded-lg text-center cursor-pointer hover:bg-blue-50 border border-slate-200">
-               <div className="text-2xl mb-1"></div>
-               <div className="font-bold text-sm text-slate-800">화끈거린다</div>
-               <div className="text-xs text-slate-500 mt-1">Burning</div>
-            </div>
-            <div className="bg-slate-100 p-3 rounded-lg text-center cursor-pointer hover:bg-blue-50 border border-slate-200">
-               <div className="text-2xl mb-1">️</div>
-               <div className="font-bold text-sm text-slate-800">뻐근하다 (우리하다)</div>
-               <div className="text-xs text-slate-500 mt-1">Dull Aching</div>
-            </div>
-         </div>
+          ))
+        )}
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur md:hidden">
+        <div className="mx-auto grid max-w-5xl grid-cols-2 gap-2">
+          <button onClick={listening ? stopListening : startListening} className={`rounded-2xl py-4 text-sm font-black text-white ${listening ? 'bg-red-500' : 'bg-slate-900'}`}>{listening ? '중지' : '🎙️ 말하기'}</button>
+          <button onClick={() => handleTranslate()} disabled={loading || !input.trim()} className="rounded-2xl bg-indigo-600 py-4 text-sm font-black text-white disabled:opacity-50">통역</button>
+        </div>
       </div>
     </div>
   );
