@@ -101,6 +101,23 @@ function hasOfficialText(value?: string) {
   return !!clean && clean !== '데이터 없음' && clean !== '-';
 }
 
+function isAcetaminophenKeyword(value: string) {
+  const q = (value || '').toLowerCase().replace(/\s+/g, '');
+  return q.includes('아세트아미노펜') || q.includes('acetaminophen') || q.includes('paracetamol') || q.includes('프로파세타몰') || q.includes('propacetamol');
+}
+
+async function fetchFastAcetaminophenResults(company?: string) {
+  const params = new URLSearchParams({ limit: '2000' });
+  if (company?.trim()) params.set('company', company.trim());
+
+  const res = await fetch(`/api/drugs/acetaminophen?${params.toString()}`, { cache: 'force-cache' });
+  const data = await res.json();
+  if (!res.ok || !data?.success || !Array.isArray(data?.items)) {
+    throw new Error(data?.message || '아세트아미노펜 캐시 검색 실패');
+  }
+  return data;
+}
+
 export default function DrugSearchPanel() {
   const [form, setForm] = useState({
     productName: '',
@@ -181,6 +198,13 @@ export default function DrugSearchPanel() {
     setLastMeta('');
 
     try {
+      if (isAcetaminophenKeyword(form.productName) || isAcetaminophenKeyword(form.ingredientName)) {
+        const data = await fetchFastAcetaminophenResults(form.company);
+        setItems(data.items);
+        setLastMeta(`고속 캐시 결과 ${data.items.length}건`);
+        return;
+      }
+
       const res = await fetch('/api/drugs/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
