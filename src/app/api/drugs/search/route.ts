@@ -50,6 +50,19 @@ type GrainImageIndexEntry = {
 
 type CompactImageIndexRow = GrainImageIndexEntry;
 
+type AcetaminophenSourceRow = {
+  code: string;
+  productName: string;
+  productEnglishName: string;
+  company: string;
+  ingredient: string;
+  additive: string;
+  atcCode: string;
+  type: string;
+  releaseDate: string;
+  status: string;
+};
+
 type GrainImageIndex = {
   rows: GrainImageIndexEntry[];
   byStdCode: Map<string, string>;
@@ -66,12 +79,13 @@ type PermitImageIndex = {
 };
 
 const SEARCH_CACHE_TTL_MS = 1000 * 30;
-const DEFAULT_SEARCH_LIMIT = 1000;
-const MAX_SEARCH_LIMIT = 1000;
+const DEFAULT_SEARCH_LIMIT = 2000;
+const MAX_SEARCH_LIMIT = 2000;
 const searchCache = new Map<string, { expiresAt: number; data: { success: boolean; count: number; items: SearchItem[]; fallbackUsed: boolean } }>();
 const PERMIT_CODE_CACHE_TTL_MS = 1000 * 60 * 10;
 let acetaminophenPermitCodesCache: { expiresAt: number; codes: string[] } | null = null;
 let acetaminophenPermitNamesCache: { expiresAt: number; names: string[] } | null = null;
+let acetaminophenSourceRowsCache: { expiresAt: number; rows: AcetaminophenSourceRow[] } | null = null;
 let grainImageIndexCache: { expiresAt: number; index: GrainImageIndex } | null = null;
 let permitImageIndexCache: { expiresAt: number; index: PermitImageIndex } | null = null;
 let compactImageRowsCache: { expiresAt: number; rows: CompactImageIndexRow[] } | null = null;
@@ -498,6 +512,44 @@ function splitSearchTokens(value: string) {
     .filter(Boolean);
 }
 
+function parseCsvLine(line: string) {
+  const out: string[] = [];
+  let cur = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        cur += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (ch === ',' && !inQuotes) {
+      out.push(cur.trim());
+      cur = '';
+      continue;
+    }
+
+    cur += ch;
+  }
+
+  out.push(cur.trim());
+  return out;
+}
+
+function normalizeDrugType(value: string) {
+  const t = (value || '').trim();
+  if (!t) return '-';
+  if (t.includes('전문')) return '전문의약품';
+  if (t.includes('일반')) return '일반의약품';
+  return t;
+}
+
 function toDigits(value: string) {
   return (value || '').replace(/\D/g, '');
 }
@@ -680,7 +732,7 @@ async function fetchLiveGrainSearchItems(keyword: string, company: string, resul
 
 function isAcetaminophenKeyword(keyword: string) {
   const q = (keyword || '').trim().toLowerCase();
-  return q.includes('아세트아미노펜') || q.includes('acetaminophen') || q.includes('paracetamol');
+  return q.includes('아세트아미노펜') || q.includes('acetaminophen') || q.includes('paracetamol') || q.includes('프로파세타몰') || q.includes('propacetamol');
 }
 
 async function loadAcetaminophenPermitCodes() {
@@ -773,6 +825,76 @@ async function loadAcetaminophenPermitNames() {
   }
 }
 
+async function loadAcetaminophenSourceRows() {
+  const now = Date.now();
+  if (acetaminophenSourceRowsCache && acetaminophenSourceRowsCache.expiresAt > now) {
+    return acetaminophenSourceRowsCache.rows;
+  }
+
+  try {
+    const filePath = path.join(process.cwd(), 'data', 'acetaminophen_products.csv');
+    const text = await fs.readFile(filePath, 'utf8');
+    const lines = text.split(/\r?\n/).filter((line) => line.trim());
+    if (lines.length < 2) return [] as AcetaminophenSourceRow[];
+
+    const headers = parseCsvLine(lines[0]);
+    const findIndex = (label: string) => headers.findIndex((header) => header.includes(label));
+    const idxCode = findIndex('품목기준코드');
+    const idxName = findIndex('제품명');
+    const idxEnglishName = findIndex('제품영문명');
+    const idxCompany = findIndex('업체명');
+    const idxReleaseDate = findIndex('허가일');
+    const idxStatus = findIndex('취소/취하');
+    const idxIngredient = findIndex('주성분');
+    const idxAdditive = findIndex('첨가제');
+    const idxType = findIndex('전문의약품');
+    const idxAtcCode = findIndex('ATC코드');
+
+    const rows = lines.slice(1).map((line) => {
+      const cols = parseCsvLine(line);
+      const code = toDigits(cols[idxCode] || '');
+      const productName = (cols[idxName] || '').trim();
+      const productEnglishName = (cols[idxEnglishName] || '').trim();
+      const ingredient = (cols[idxIngredient] || '').trim();
+      const additive = (cols[idxAdditive] || '').trim();
+      if (!code || !productName || !(isAcetaminophenKeyword(productName) || isAcetaminophenKeyword(productEnglishName) || isAcetaminophenKeyword(ingredient) || isAcetaminophenKeyword(additive))) {
+        return null;
+      }
+
+      return {
+        code,
+        productName,
+        productEnglishName,
+        company: (cols[idxCompany] || '').trim(),
+        ingredient,
+        additive,
+        atcCode: (cols[idxAtcCode] || '').trim(),
+        type: normalizeDrugType(cols[idxType] || ''),
+        releaseDate: (cols[idxReleaseDate] || '').trim(),
+        status: (cols[idxStatus] || '').trim(),
+      } satisfies AcetaminophenSourceRow;
+    }).filter((row): row is AcetaminophenSourceRow => row !== null);
+
+    const unique = new Map<string, AcetaminophenSourceRow>();
+    for (const row of rows) {
+      if (!unique.has(row.code)) unique.set(row.code, row);
+    }
+
+    const values = Array.from(unique.values());
+    acetaminophenSourceRowsCache = {
+      expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+      rows: values,
+    };
+    return values;
+  } catch {
+    acetaminophenSourceRowsCache = {
+      expiresAt: now + PERMIT_CODE_CACHE_TTL_MS,
+      rows: [],
+    };
+    return [] as AcetaminophenSourceRow[];
+  }
+}
+
 function buildCsvLookupCodes(standardCode: string, insuranceCode: string) {
   const codes = new Set<string>();
   const candidates = [standardCode, insuranceCode];
@@ -808,6 +930,76 @@ function hasPositivePrice(value: string | number | null | undefined) {
   return parsePositivePrice(value) !== null;
 }
 
+function makeAcetaminophenSourceItem(row: AcetaminophenSourceRow, priceLabel: string, imageUrl: string): SearchItem {
+  const type = row.type || '-';
+  const fallbackPrice = type.includes('일반') ? '일반의약품 / 급여구분미확인' : '가격 미상 / 급여구분미확인';
+  return {
+    id: row.code,
+    productName: row.productName,
+    ingredientName: row.ingredient || row.productEnglishName || row.additive || '아세트아미노펜',
+    company: row.company || '-',
+    imageUrl,
+    priceLabel: priceLabel || fallbackPrice,
+    reimbursement: '급여구분미확인',
+    insuranceCode: row.code,
+    standardCode: row.code,
+    atcCode: row.atcCode || '-',
+    type,
+    releaseDate: row.releaseDate || '-',
+    usageFrequency: 0,
+    brandClass: row.company.includes('존슨앤드존슨') || row.productName.includes('타이레놀') ? '오리지널(대장약)' : '복제약(제네릭)',
+    sourceService: '사용자 제공 아세트아미노펜 원본 CSV',
+  };
+}
+
+async function runAcetaminophenSourceSearch(resultLimit: number, company?: string) {
+  const sourceRows = await loadAcetaminophenSourceRows();
+  const companyFilter = normalizeCompanyKey(company || '');
+  const filteredRows = companyFilter
+    ? sourceRows.filter((row) => normalizeCompanyKey(row.company).includes(companyFilter))
+    : sourceRows;
+  const csvPriceMap = await loadRichDrugPrices();
+  const csvPriceByName = new Map<string, string>();
+
+  for (const data of csvPriceMap.values()) {
+    if (!data.productName || !hasPositivePrice(data.price)) continue;
+    const price = String(data.price).trim().replace(/,/g, '');
+    const nameKeys = [
+      normalizeDrugNameKey(data.productName),
+      normalizeDrugNameKey(normalizeBaseProductName(data.productName)),
+    ].filter(Boolean);
+    for (const key of nameKeys) {
+      if (!csvPriceByName.has(key)) csvPriceByName.set(key, price);
+    }
+  }
+
+  const items = filteredRows.map((row) => {
+    const csvData = buildCsvLookupCodes(row.code, row.code).map((code) => csvPriceMap.get(code)).find(Boolean);
+    const namePrice = csvPriceByName.get(normalizeDrugNameKey(row.productName)) ||
+      csvPriceByName.get(normalizeDrugNameKey(normalizeBaseProductName(row.productName)));
+    const rawPrice = csvData?.price && hasPositivePrice(csvData.price) ? csvData.price : namePrice;
+    const priceLabel = rawPrice && hasPositivePrice(rawPrice) ? `${String(rawPrice).trim().replace(/,/g, '')}원 / 급여구분미확인` : '';
+    return makeAcetaminophenSourceItem(row, priceLabel, '');
+  });
+
+  items.sort((a, b) => {
+    const priceA = parsePositivePrice(a.priceLabel);
+    const priceB = parsePositivePrice(b.priceLabel);
+    if (priceA !== null && priceB !== null && priceA !== priceB) return priceA - priceB;
+    if (priceA !== null && priceB === null) return -1;
+    if (priceA === null && priceB !== null) return 1;
+    return a.productName.localeCompare(b.productName, 'ko');
+  });
+
+  const limited = items.slice(0, resultLimit);
+  return {
+    success: true,
+    count: limited.length,
+    items: limited,
+    fallbackUsed: false,
+  };
+}
+
 async function runSearch(body: QueryPayload) {
   const { productName, ingredientName, company } = body;
 
@@ -824,6 +1016,10 @@ async function runSearch(body: QueryPayload) {
   const isSingleCodeSearch =
     searchProducts.length === 1 &&
     (looksLikeCode(searchProducts[0]) || /^[0-9]{7,}$/.test(toDigits(searchProducts[0])));
+
+  if (isAcetaminophenKeyword(ingredientKeywordCandidate) && !isSingleCodeSearch) {
+    return runAcetaminophenSourceSearch(resultLimit, company);
+  }
 
   const buildConditions = (mode: 'strict' | 'broad') => {
     const conditions: any[] = [];
@@ -1326,7 +1522,7 @@ async function runSearch(body: QueryPayload) {
     }
   }
 
-  const normalizedItems = finalItems.map((item) => {
+  let normalizedItems = finalItems.map((item) => {
     if (!item.priceLabel.startsWith('가격 미상') && !item.priceLabel.startsWith('가격정보없음')) return item;
 
     const baseName = normalizeBaseProductName(item.productName);
@@ -1338,6 +1534,27 @@ async function runSearch(body: QueryPayload) {
       priceLabel: `${inferredPrice} (추정) / ${item.reimbursement}`,
     };
   });
+
+  if (isAcetaminophenKeyword(ingredientKeywordCandidate)) {
+    const sourceRows = await loadAcetaminophenSourceRows();
+    const sourceItems = sourceRows.map((row) => {
+      const csvData = buildCsvLookupCodes(row.code, row.code).map((code) => csvPriceMap.get(code)).find(Boolean);
+      const priceLabel = csvData?.price && hasPositivePrice(csvData.price) ? `${String(csvData.price).trim().replace(/,/g, '')}원 / 급여구분미확인` : '';
+      const imageUrl = findImageFromGrainIndex(grainImageIndex, row.productName, row.company, row.code, row.code) ||
+        findImageFromPermitIndex(permitImageIndex, row.productName, row.company, row.code, row.code);
+      return makeAcetaminophenSourceItem(row, priceLabel, imageUrl);
+    });
+
+    const merged = new Map<string, SearchItem>();
+    for (const item of [...normalizedItems, ...sourceItems]) {
+      const key = item.standardCode || item.insuranceCode || item.id;
+      const prev = merged.get(key);
+      if (!prev || (hasPositivePrice(item.priceLabel) && !hasPositivePrice(prev.priceLabel))) {
+        merged.set(key, item);
+      }
+    }
+    normalizedItems = Array.from(merged.values());
+  }
 
   // 제품명+제조사 기준으로 중복을 강하게 제거하여 검색 결과 화면 개선.
   // For acetaminophen parity checks, preserve code-level variants instead of collapsing them.

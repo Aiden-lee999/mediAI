@@ -251,7 +251,7 @@ export default function DrugSearch() {
     setError('');
 
     try {
-      const res = await fetch(`/api/drugs/search?productName=${encodeURIComponent(searchTerm)}&limit=1000`);
+      const res = await fetch(`/api/drugs/search?productName=${encodeURIComponent(searchTerm)}&limit=2000`);
       const data = await res.json();
 
       if (res.ok) {

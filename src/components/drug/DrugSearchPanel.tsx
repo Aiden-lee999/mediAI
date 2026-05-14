@@ -124,7 +124,7 @@ export default function DrugSearchPanel() {
     void fetch('/api/drugs/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productName: '타이레놀', limit: 1000 }),
+      body: JSON.stringify({ productName: '타이레놀', limit: 2000 }),
       cache: 'no-store',
     }).catch(() => {
       // Ignore warm-up failures silently; this should not affect UX.
@@ -184,7 +184,7 @@ export default function DrugSearchPanel() {
       const res = await fetch('/api/drugs/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, limit: 1000 }),
+        body: JSON.stringify({ ...form, limit: 2000 }),
         cache: 'no-store',
       });
 
@@ -202,7 +202,7 @@ export default function DrugSearchPanel() {
       if (needsFallback) {
         const fallbackKeyword = (form.productName || form.ingredientName || form.company || '').trim();
         const keyword = encodeURIComponent(fallbackKeyword);
-        const fallbackRes = await fetch(`/api/drugs/search?keyword=${keyword}&limit=1000`, { cache: 'no-store' });
+        const fallbackRes = await fetch(`/api/drugs/search?keyword=${keyword}&limit=2000`, { cache: 'no-store' });
         const fallbackTxt = await fallbackRes.text();
         let fallbackData: any;
         try {
