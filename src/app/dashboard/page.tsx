@@ -71,6 +71,42 @@ function SortableDrugTable({ initialDrugs }: { initialDrugs: any[] }) {
   );
 }
 
+function convertImageFileToJpegDataUrl(file: File, maxSide = 1600, quality = 0.86) {
+  return new Promise<string>((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('이미지 파일만 첨부할 수 있습니다.'));
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxSide / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+        const width = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+        const height = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('이미지 변환을 위한 Canvas를 초기화하지 못했습니다.');
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        URL.revokeObjectURL(objectUrl);
+        resolve(dataUrl);
+      } catch (error) {
+        URL.revokeObjectURL(objectUrl);
+        reject(error);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('이 이미지 형식은 브라우저에서 읽을 수 없습니다. JPG/PNG/WebP로 변환해 업로드해 주세요.'));
+    };
+    img.src = objectUrl;
+  });
+}
+
 // ==========================================
 // 2. 메인 대시보드 페이지
 // ==========================================
@@ -88,6 +124,7 @@ export default function DashboardPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const [attachmentBase64, setAttachmentBase64] = useState<string | null>(null);
+  const [attachmentNotice, setAttachmentNotice] = useState('');
   
   // 히스토리/세션 관리
   const [currentSessionId, setCurrentSessionId] = useState<string>(`session_${Date.now()}`);
@@ -159,14 +196,20 @@ export default function DashboardPage() {
     if(window.innerWidth < 768) setSidebarOpen(false);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        if (ev.target?.result) setAttachmentBase64(ev.target.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    setAttachmentNotice('이미지를 AI 분석용 JPEG로 변환 중입니다...');
+    try {
+      const converted = await convertImageFileToJpegDataUrl(file);
+      setAttachmentBase64(converted);
+      setAttachmentNotice('이미지가 첨부되었습니다. 서버 호환을 위해 JPEG로 자동 변환했습니다.');
+    } catch (error: any) {
+      setAttachmentBase64(null);
+      setAttachmentNotice(error?.message || '이미지를 첨부하지 못했습니다. JPG/PNG/WebP 파일로 다시 시도해 주세요.');
+    } finally {
+      e.target.value = '';
     }
   };
 
@@ -196,6 +239,7 @@ export default function DashboardPage() {
 
     setChatInput('');
     setAttachmentBase64(null);
+    setAttachmentNotice('');
     setIsThinking(true);
 
     try {
@@ -618,9 +662,14 @@ export default function DashboardPage() {
             {attachmentBase64 && (
               <div className="relative inline-block mb-3">
                 <img src={attachmentBase64} alt="preview" className="h-16 w-16 object-cover rounded-lg border border-slate-300 shadow-sm" />
-                <button onClick={() => setAttachmentBase64(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold leading-none">
+                <button onClick={() => { setAttachmentBase64(null); setAttachmentNotice(''); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold leading-none">
                   &times;
                 </button>
+              </div>
+            )}
+            {attachmentNotice && (
+              <div className="mb-2 text-xs text-slate-500">
+                {attachmentNotice}
               </div>
             )}
             
