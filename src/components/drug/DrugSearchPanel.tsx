@@ -69,8 +69,12 @@ type SortKey = 'price' | 'releaseDate' | 'usageFrequency' | 'brandClass';
 type SortDirection = 'asc' | 'desc';
 
 function parsePrice(value: string) {
-  const n = Number((value || '').replace(/[^0-9.-]/g, ''));
-  return Number.isFinite(n) ? n : -1;
+  const first = (value || '').split('/')[0].replace(/,/g, '').trim();
+  const match = first.match(/[0-9]+(?:\.[0-9]+)?/);
+  if (!match) return null;
+
+  const n = Number(match[0]);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function parseDate(value: string) {
@@ -120,7 +124,7 @@ export default function DrugSearchPanel() {
     void fetch('/api/drugs/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productName: '타이레놀' }),
+      body: JSON.stringify({ productName: '타이레놀', limit: 1000 }),
       cache: 'no-store',
     }).catch(() => {
       // Ignore warm-up failures silently; this should not affect UX.
@@ -135,12 +139,19 @@ export default function DrugSearchPanel() {
       const classDiff = classRank(a.brandClass) - classRank(b.brandClass);
       if (classDiff !== 0) return classDiff;
 
-      let av = 0;
-      let bv = 0;
+      let av: number | null = 0;
+      let bv: number | null = 0;
 
       if (sortKey === 'price') {
         av = parsePrice(a.priceLabel);
         bv = parsePrice(b.priceLabel);
+        if (av === null && bv === null) {
+          const freqDiff = (b.usageFrequency || 0) - (a.usageFrequency || 0);
+          if (freqDiff !== 0) return freqDiff;
+          return cleanProductName(a.productName).localeCompare(cleanProductName(b.productName), 'ko');
+        }
+        if (av === null) return 1;
+        if (bv === null) return -1;
       } else if (sortKey === 'releaseDate') {
         av = parseDate(a.releaseDate);
         bv = parseDate(b.releaseDate);
@@ -152,6 +163,7 @@ export default function DrugSearchPanel() {
         bv = b.usageFrequency || 0;
       }
 
+      if (av === null || bv === null) return 0;
       const diff = av - bv;
       if (diff !== 0) return sortDirection === 'asc' ? diff : -diff;
 
@@ -172,7 +184,7 @@ export default function DrugSearchPanel() {
       const res = await fetch('/api/drugs/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, limit: 1000 }),
         cache: 'no-store',
       });
 
@@ -190,7 +202,7 @@ export default function DrugSearchPanel() {
       if (needsFallback) {
         const fallbackKeyword = (form.productName || form.ingredientName || form.company || '').trim();
         const keyword = encodeURIComponent(fallbackKeyword);
-        const fallbackRes = await fetch(`/api/drugs/search?keyword=${keyword}`, { cache: 'no-store' });
+        const fallbackRes = await fetch(`/api/drugs/search?keyword=${keyword}&limit=1000`, { cache: 'no-store' });
         const fallbackTxt = await fallbackRes.text();
         let fallbackData: any;
         try {

@@ -66,8 +66,8 @@ type PermitImageIndex = {
 };
 
 const SEARCH_CACHE_TTL_MS = 1000 * 30;
-const DEFAULT_SEARCH_LIMIT = 100;
-const MAX_SEARCH_LIMIT = 500;
+const DEFAULT_SEARCH_LIMIT = 1000;
+const MAX_SEARCH_LIMIT = 1000;
 const searchCache = new Map<string, { expiresAt: number; data: { success: boolean; count: number; items: SearchItem[]; fallbackUsed: boolean } }>();
 const PERMIT_CODE_CACHE_TTL_MS = 1000 * 60 * 10;
 let acetaminophenPermitCodesCache: { expiresAt: number; codes: string[] } | null = null;
@@ -795,6 +795,19 @@ function buildCsvLookupCodes(standardCode: string, insuranceCode: string) {
   return Array.from(codes);
 }
 
+function parsePositivePrice(value: string | number | null | undefined) {
+  const firstSegment = String(value ?? '').split('/')[0].replace(/,/g, '').trim();
+  const match = firstSegment.match(/[0-9]+(?:\.[0-9]+)?/);
+  if (!match) return null;
+
+  const n = Number(match[0]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function hasPositivePrice(value: string | number | null | undefined) {
+  return parsePositivePrice(value) !== null;
+}
+
 async function runSearch(body: QueryPayload) {
   const { productName, ingredientName, company } = body;
 
@@ -1192,7 +1205,7 @@ async function runSearch(body: QueryPayload) {
   const originalNames = ['타이레놀', '리피토', '글리벡', '노바스크'];
   const needsCsvPrice = drugs.some((item) => {
     const p = (item.priceLabel || '').trim().replace(/,/g, '');
-    return !p || p === '가격정보없음' || !/[0-9]/.test(p);
+    return !hasPositivePrice(p);
   });
   const needsCsvIngredient = drugs.some((item) => {
     const ingr = (item.ingredientName || '').trim();
@@ -1212,7 +1225,7 @@ async function runSearch(body: QueryPayload) {
 
     let p = (item.priceLabel || '').trim().replace(/,/g, '');
     const c = (item.reimbursement || '').trim() || '급여구분미확인';
-    if ((!p || p === '가격정보없음' || !/[0-9]/.test(p)) && csvData?.price) {
+    if (!hasPositivePrice(p) && csvData?.price && hasPositivePrice(csvData.price)) {
       p = String(csvData.price).trim().replace(/,/g, '');
     }
 
@@ -1226,7 +1239,7 @@ async function runSearch(body: QueryPayload) {
       ).trim();
     }
 
-    if (p && /[0-9]/.test(p) && p !== '가격정보없음') {
+    if (hasPositivePrice(p)) {
       if (!p.includes('원')) p += '원';
     } else if (c.includes('비급여') || (item.type || '').includes('일반')) {
       p = (item.type || '').includes('일반') ? '일반의약품' : '비급여';
@@ -1304,7 +1317,7 @@ async function runSearch(body: QueryPayload) {
   // Propagate known prices to variants sharing the same base product name.
   const knownPriceByBaseName = new Map<string, string>();
   for (const item of finalItems) {
-    if (/[0-9]/.test(item.priceLabel) && !item.priceLabel.startsWith('가격정보없음')) {
+    if (hasPositivePrice(item.priceLabel)) {
       const baseName = normalizeBaseProductName(item.productName);
       if (baseName && !knownPriceByBaseName.has(baseName)) {
         const numericPrice = item.priceLabel.split('/')[0].trim();
@@ -1336,8 +1349,8 @@ async function runSearch(body: QueryPayload) {
       : (item.standardCode || item.insuranceCode || item.id);
     const prev = dedupMap.get(key);
     // 같은 제품이라면 비급여보다는 급여 정보를 우대, 혹은 빈도순으로 우대.
-    const isItemPriced = /[0-9]/.test(item.priceLabel) && !item.priceLabel.includes('가격정보없음');
-    const isPrevPriced = prev ? /[0-9]/.test(prev.priceLabel) && !prev.priceLabel.includes('가격정보없음') : false;
+    const isItemPriced = hasPositivePrice(item.priceLabel);
+    const isPrevPriced = prev ? hasPositivePrice(prev.priceLabel) : false;
 
     if (!prev) {
        dedupMap.set(key, item);

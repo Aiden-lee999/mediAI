@@ -60,8 +60,11 @@ export default function DrugSearch() {
 
   const toPriceNumber = (value: string) => {
     const first = (value || '').split('/')[0] || '';
-    const numeric = first.replace(/[^0-9]/g, '');
-    return numeric ? Number(numeric) : Number.MAX_SAFE_INTEGER;
+    const numeric = first.replace(/,/g, '').match(/[0-9]+(?:\.[0-9]+)?/);
+    if (!numeric) return null;
+
+    const n = Number(numeric[0]);
+    return Number.isFinite(n) && n > 0 ? n : null;
   };
 
   const handleSort = (col: string) => {
@@ -142,6 +145,11 @@ export default function DrugSearch() {
       if (sortCol === 'priceLabel') {
         const priceA = toPriceNumber(a.priceLabel || '');
         const priceB = toPriceNumber(b.priceLabel || '');
+        if (priceA === null && priceB === null) {
+          return String(a.productName || '').localeCompare(String(b.productName || ''), 'ko');
+        }
+        if (priceA === null) return 1;
+        if (priceB === null) return -1;
         return isAsc ? priceA - priceB : priceB - priceA;
       }
 
@@ -243,7 +251,7 @@ export default function DrugSearch() {
     setError('');
 
     try {
-      const res = await fetch(`/api/drugs/search?productName=${encodeURIComponent(searchTerm)}`);
+      const res = await fetch(`/api/drugs/search?productName=${encodeURIComponent(searchTerm)}&limit=1000`);
       const data = await res.json();
 
       if (res.ok) {
