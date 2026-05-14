@@ -106,7 +106,7 @@ function readUser(): AppUser | null {
 }
 
 function isDirectorLocal(user: AppUser | null) {
-  return /원장|병원장|대표|개원의|director|owner|admin|hospital_director|hospital-admin/i.test(`${user?.jobTitle || ''} ${user?.role || ''}`) && !!user?.hospitalName;
+  return /원장|병원장|대표|개원의|director|owner|admin|hospital_director|hospital-admin/i.test(`${user?.name || ''} ${user?.jobTitle || ''} ${user?.role || ''}`);
 }
 
 export default function RecruitMatch() {

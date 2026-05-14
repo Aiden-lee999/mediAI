@@ -34,9 +34,9 @@ export function toNumberOrNull(value: unknown) {
   return Number.isFinite(n) ? n : null;
 }
 
-export function isHospitalDirector(user: { jobTitle?: string | null; role?: string | null; hospitalName?: string | null }) {
-  const text = `${user.jobTitle || ''} ${user.role || ''}`.toLowerCase();
-  return /원장|병원장|대표|개원의|director|owner|admin|hospital_director|hospital-admin/.test(text) && !!String(user.hospitalName || '').trim();
+export function isHospitalDirector(user: { name?: string | null; jobTitle?: string | null; role?: string | null; hospitalName?: string | null }) {
+  const text = `${user.name || ''} ${user.jobTitle || ''} ${user.role || ''}`.toLowerCase();
+  return /원장|병원장|대표|개원의|director|owner|admin|hospital_director|hospital-admin/.test(text);
 }
 
 export function haversineKm(aLat?: number | null, aLng?: number | null, bLat?: number | null, bLng?: number | null) {
