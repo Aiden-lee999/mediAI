@@ -25,6 +25,11 @@ type ConversationTurn = {
   medicalTerms: string[];
 };
 
+type QuickPhrase = {
+  ko: string;
+  translations: Record<string, string>;
+};
+
 type SpeechRecognitionEventResult = {
   isFinal: boolean;
   [index: number]: { transcript: string };
@@ -60,14 +65,96 @@ const LANGUAGES: LanguageOption[] = [
   { code: 'ar', label: 'العربية', apiLabel: '아랍어', speechCode: 'ar-SA', flag: '🇸🇦' },
 ];
 
-const QUICK_PHRASES = [
-  '어디가 가장 불편하세요?',
-  '통증은 언제부터 시작됐나요?',
-  '이 약은 하루 세 번 식후에 드세요.',
-  '발진, 호흡곤란, 얼굴 부종이 생기면 바로 중단하고 병원에 오세요.',
-  '임신 가능성이나 수유 중인지 확인이 필요합니다.',
-  '복용 중인 약이나 알레르기가 있나요?',
+const QUICK_PHRASES: QuickPhrase[] = [
+  {
+    ko: '어디가 가장 불편하세요?',
+    translations: {
+      en: 'Where do you feel the most discomfort?',
+      zh: '您哪里最不舒服？',
+      ja: 'どこが一番つらいですか？',
+      vi: 'Bạn khó chịu nhất ở đâu?',
+      ru: 'Где вы чувствуете самый сильный дискомфорт?',
+      mn: 'Таны хаана хамгийн их зовиуртай байна вэ?',
+      th: 'คุณรู้สึกไม่สบายตรงไหนมากที่สุด?',
+      id: 'Bagian mana yang paling tidak nyaman?',
+      ar: 'أين تشعر بأكبر قدر من الانزعاج؟',
+    },
+  },
+  {
+    ko: '통증은 언제부터 시작됐나요?',
+    translations: {
+      en: 'When did the pain start?',
+      zh: '疼痛是什么时候开始的？',
+      ja: '痛みはいつから始まりましたか？',
+      vi: 'Cơn đau bắt đầu từ khi nào?',
+      ru: 'Когда началась боль?',
+      mn: 'Өвдөлт хэзээнээс эхэлсэн бэ?',
+      th: 'อาการปวดเริ่มตั้งแต่เมื่อไหร่?',
+      id: 'Sejak kapan nyerinya mulai?',
+      ar: 'متى بدأ الألم؟',
+    },
+  },
+  {
+    ko: '이 약은 하루 세 번 식후에 드세요.',
+    translations: {
+      en: 'Please take this medicine three times a day after meals.',
+      zh: '请每天三次饭后服用这种药。',
+      ja: 'この薬は1日3回、食後に飲んでください。',
+      vi: 'Vui lòng uống thuốc này ngày ba lần sau bữa ăn.',
+      ru: 'Принимайте это лекарство три раза в день после еды.',
+      mn: 'Энэ эмийг өдөрт гурван удаа хоолны дараа ууна уу.',
+      th: 'กรุณากินยานี้วันละสามครั้งหลังอาหาร',
+      id: 'Minum obat ini tiga kali sehari setelah makan.',
+      ar: 'يرجى تناول هذا الدواء ثلاث مرات يوميًا بعد الطعام.',
+    },
+  },
+  {
+    ko: '발진, 호흡곤란, 얼굴 부종이 생기면 바로 중단하고 병원에 오세요.',
+    translations: {
+      en: 'If you get a rash, shortness of breath, or facial swelling, stop it and come to the hospital right away.',
+      zh: '如果出现皮疹、呼吸困难或面部肿胀，请立即停药并来医院。',
+      ja: '発疹、息苦しさ、顔の腫れが出たらすぐ中止して病院に来てください。',
+      vi: 'Nếu bị phát ban, khó thở hoặc sưng mặt, hãy ngừng thuốc và đến bệnh viện ngay.',
+      ru: 'Если появятся сыпь, одышка или отек лица, прекратите прием и сразу обратитесь в больницу.',
+      mn: 'Тууралт, амьсгал давчдах, нүүр хавагнах шинж гарвал эмээ зогсоож шууд эмнэлэгт ирээрэй.',
+      th: 'หากมีผื่น หายใจลำบาก หรือหน้าบวม ให้หยุดยาและมาโรงพยาบาลทันที',
+      id: 'Jika muncul ruam, sesak napas, atau bengkak di wajah, hentikan obat dan segera datang ke rumah sakit.',
+      ar: 'إذا ظهر طفح جلدي أو ضيق تنفس أو تورم في الوجه، أوقف الدواء وتعال إلى المستشفى فورًا.',
+    },
+  },
+  {
+    ko: '임신 가능성이나 수유 중인지 확인이 필요합니다.',
+    translations: {
+      en: 'We need to check whether you may be pregnant or breastfeeding.',
+      zh: '我们需要确认您是否可能怀孕或正在哺乳。',
+      ja: '妊娠の可能性や授乳中かどうかを確認する必要があります。',
+      vi: 'Chúng tôi cần kiểm tra bạn có khả năng mang thai hoặc đang cho con bú không.',
+      ru: 'Нужно уточнить, возможна ли беременность или кормите ли вы грудью.',
+      mn: 'Та жирэмсэн байх магадлалтай эсэх эсвэл хөхүүл эсэхийг шалгах хэрэгтэй.',
+      th: 'เราจำเป็นต้องตรวจสอบว่าคุณอาจตั้งครรภ์หรือกำลังให้นมบุตรหรือไม่',
+      id: 'Kami perlu memastikan apakah Anda mungkin hamil atau sedang menyusui.',
+      ar: 'نحتاج إلى التأكد مما إذا كان هناك احتمال حمل أو كنتِ ترضعين.',
+    },
+  },
+  {
+    ko: '복용 중인 약이나 알레르기가 있나요?',
+    translations: {
+      en: 'Are you taking any medicines, or do you have any allergies?',
+      zh: '您正在服用药物吗？或者有过敏史吗？',
+      ja: '服用中の薬やアレルギーはありますか？',
+      vi: 'Bạn có đang dùng thuốc nào hoặc có dị ứng gì không?',
+      ru: 'Вы принимаете какие-либо лекарства или у вас есть аллергия?',
+      mn: 'Та ямар нэг эм ууж байгаа юу, эсвэл харшилтай юу?',
+      th: 'คุณกำลังกินยาอะไรอยู่หรือมีอาการแพ้อะไรไหม?',
+      id: 'Apakah Anda sedang minum obat atau punya alergi?',
+      ar: 'هل تتناول أي أدوية أو لديك أي حساسية؟',
+    },
+  },
 ];
+
+function getLocalizedPhrase(phrase: QuickPhrase, languageCode: string) {
+  return phrase.translations[languageCode] || phrase.translations.en || phrase.ko;
+}
 
 function getSpeechLang(speaker: Speaker, patientLanguage: LanguageOption) {
   return speaker === 'doctor' ? 'ko-KR' : patientLanguage.speechCode;
@@ -259,16 +346,27 @@ export default function TranslateMCA() {
           onChange={(event) => setInput(event.target.value)}
         />
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {QUICK_PHRASES.map((phrase) => (
-            <button
-              key={phrase}
-              onClick={() => setInput(phrase)}
-              className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:border-indigo-200 hover:bg-indigo-50"
-            >
-              {phrase}
-            </button>
-          ))}
+        <div className="mt-3 space-y-2">
+          <div className="text-xs font-bold text-slate-500">
+            {patientLanguage.flag} {patientLanguage.label} 예시 문장 · {speaker === 'doctor' ? '누르면 한국어 원문이 입력됩니다.' : '누르면 환자 언어 원문이 입력됩니다.'}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {QUICK_PHRASES.map((phrase) => {
+              const localized = getLocalizedPhrase(phrase, patientLanguage.code);
+              const inputText = speaker === 'doctor' ? phrase.ko : localized;
+
+              return (
+                <button
+                  key={phrase.ko}
+                  onClick={() => setInput(inputText)}
+                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:border-indigo-200 hover:bg-indigo-50"
+                >
+                  <span className="block text-[13px] font-black text-slate-900">{localized}</span>
+                  <span className="mt-1 block text-[11px] font-medium text-slate-400">{phrase.ko}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {status && <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">{status}</div>}
