@@ -19,6 +19,7 @@ type AppUser = {
   name: string;
   specialty?: string;
   jobTitle?: string;
+  role?: string;
   hospitalName?: string;
   address?: string;
   license?: string;
@@ -105,7 +106,7 @@ function readUser(): AppUser | null {
 }
 
 function isDirectorLocal(user: AppUser | null) {
-  return /원장|병원장|대표|개원의|director|owner|admin/i.test(`${user?.jobTitle || ''}`) && !!user?.hospitalName;
+  return /원장|병원장|대표|개원의|director|owner|admin|hospital_director|hospital-admin/i.test(`${user?.jobTitle || ''} ${user?.role || ''}`) && !!user?.hospitalName;
 }
 
 export default function RecruitMatch() {
@@ -230,7 +231,7 @@ export default function RecruitMatch() {
     }
   };
 
-  const primaryLabel = isDirector ? 'AI 구인 매칭' : 'AI 구직 매칭';
+  const primaryLabel = isDirector ? '구인하기 · AI 후보 매칭' : '구직하기 · AI 병원 매칭';
   const topMatches = useMemo(() => matches.slice(0, 12), [matches]);
 
   if (!user) {
@@ -247,6 +248,9 @@ export default function RecruitMatch() {
         <div className="bg-[radial-gradient(circle_at_12%_10%,rgba(56,189,248,0.35),transparent_28%),linear-gradient(135deg,#0f172a_0%,#1e3a8a_52%,#0f766e_100%)] p-8">
           <p className="text-xs font-black tracking-[0.32em] text-cyan-100">AIMDNET RECRUIT INTELLIGENCE</p>
           <h2 className="mt-3 text-3xl font-black">{primaryLabel}</h2>
+          <div className="mt-3 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-black text-cyan-50">
+            {isDirector ? '원장/관리자 모드: 구인하기만 표시됩니다.' : '의료진 모드: 구직하기만 표시됩니다.'}
+          </div>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-blue-50">
             {isDirector
               ? '병원 원장/관리자 계정은 구인 공고를 등록하고, 진료과·근무조건·페이·거리·우선순위 기준으로 어울리는 의료진을 자동 추천받습니다.'
@@ -263,25 +267,25 @@ export default function RecruitMatch() {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[420px_1fr]">
         <div className="space-y-6">
-          <Panel title={isDirector ? '병원 채용 기준' : '내 구직 선호조건'} subtitle="주소만 입력해도 네이버 지도 API로 좌표를 자동 변환합니다. 좌표는 직접 입력해도 됩니다.">
-            <FormInput label="내 기준 위치" value={profile.locationAddress} onChange={(v) => setProfile({ ...profile, locationAddress: v })} placeholder="예: 서울 강남구 테헤란로" />
+          <Panel title={isDirector ? '매칭용 병원정보 입력하기' : '내 구직 선호조건 입력하기'} subtitle={isDirector ? '병원 주소와 채용 기준을 입력하면 후보 의료진과의 거리·조건 매칭에 사용됩니다.' : '내 기준 위치와 희망 조건을 입력하면 병원 공고와 자동 매칭합니다.'}>
+            <FormInput label={isDirector ? '병원 위치' : '내 기준 위치'} value={profile.locationAddress} onChange={(v) => setProfile({ ...profile, locationAddress: v })} placeholder={isDirector ? '예: 서울 강남구 테헤란로 123' : '예: 서울 강남구 테헤란로'} />
             <div className="grid grid-cols-2 gap-3">
               <FormInput label="위도(선택)" value={profile.latitude} onChange={(v) => setProfile({ ...profile, latitude: v })} placeholder="37.5665" />
               <FormInput label="경도(선택)" value={profile.longitude} onChange={(v) => setProfile({ ...profile, longitude: v })} placeholder="126.9780" />
             </div>
             <FormSelect label="해당과" value={profile.specialty} onChange={(v) => setProfile({ ...profile, specialty: v })} options={specialties} />
-            <CheckGroup label="근무 시간/형태" values={profile.workTypes} options={workTypeOptions} onChange={(v) => setProfile({ ...profile, workTypes: v })} />
-            <CheckGroup label="근무 방법" values={profile.workMethods} options={workMethodOptions} onChange={(v) => setProfile({ ...profile, workMethods: v })} />
-            <FormInput label="근무 시간 상세" value={profile.workHours} onChange={(v) => setProfile({ ...profile, workHours: v })} placeholder="예: 주 4일, 오전 진료만" />
+            <CheckGroup label={isDirector ? '채용 시간/형태' : '희망 시간/형태'} values={profile.workTypes} options={workTypeOptions} onChange={(v) => setProfile({ ...profile, workTypes: v })} />
+            <CheckGroup label={isDirector ? '채용 업무 방식' : '희망 업무 방식'} values={profile.workMethods} options={workMethodOptions} onChange={(v) => setProfile({ ...profile, workMethods: v })} />
+            <FormInput label={isDirector ? '채용 시간 상세' : '희망 근무시간'} value={profile.workHours} onChange={(v) => setProfile({ ...profile, workHours: v })} placeholder="예: 주 4일, 오전 진료만" />
             <div className="grid grid-cols-2 gap-3">
-              <FormInput label="희망 최소 페이" value={profile.minPay} onChange={(v) => setProfile({ ...profile, minPay: v.replace(/\D/g, '') })} placeholder="만원" />
-              <FormInput label="희망 최대 페이" value={profile.maxPay} onChange={(v) => setProfile({ ...profile, maxPay: v.replace(/\D/g, '') })} placeholder="만원" />
+              <FormInput label={isDirector ? '제시 최소 페이' : '희망 최소 페이'} value={profile.minPay} onChange={(v) => setProfile({ ...profile, minPay: v.replace(/\D/g, '') })} placeholder="만원" />
+              <FormInput label={isDirector ? '제시 최대 페이' : '희망 최대 페이'} value={profile.maxPay} onChange={(v) => setProfile({ ...profile, maxPay: v.replace(/\D/g, '') })} placeholder="만원" />
             </div>
             <FormSelect label="가장 중요한 기준" value={profile.priority} onChange={(v) => setProfile({ ...profile, priority: v })} options={priorities.map((p) => p.value)} labels={Object.fromEntries(priorities.map((p) => [p.value, p.label]))} />
-            <FormInput label="시작 가능일" value={profile.availableFrom} onChange={(v) => setProfile({ ...profile, availableFrom: v })} placeholder="예: 즉시 / 2026-06-01" />
-            <FormTextarea label="소개/요구사항" value={profile.intro} onChange={(v) => setProfile({ ...profile, intro: v })} placeholder="중요한 조건, 선호 지역, 가능한 업무 등을 입력하세요." />
+            {!isDirector && <FormInput label="시작 가능일" value={profile.availableFrom} onChange={(v) => setProfile({ ...profile, availableFrom: v })} placeholder="예: 즉시 / 2026-06-01" />}
+            <FormTextarea label={isDirector ? '병원/채용 소개' : '소개/요구사항'} value={profile.intro} onChange={(v) => setProfile({ ...profile, intro: v })} placeholder={isDirector ? '진료량, 장비, 복지, 협진 구조 등을 입력하세요.' : '중요한 조건, 선호 지역, 가능한 업무 등을 입력하세요.'} />
             <button onClick={saveProfile} disabled={loading} className="h-11 w-full rounded-xl bg-blue-700 text-sm font-black text-white hover:bg-blue-800 disabled:bg-slate-300">
-              {loading ? '저장 중...' : '조건 저장 후 자동 매칭'}
+              {loading ? '저장 중...' : isDirector ? '병원정보 저장 후 후보 매칭' : '구직조건 저장 후 병원 매칭'}
             </button>
           </Panel>
 

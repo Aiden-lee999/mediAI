@@ -6,6 +6,9 @@ import { useRouter } from 'next/navigation';
 type ModalView = 'terms' | 'form' | 'forgot' | null;
 
 const specialties = ['내과', '외과', '소아청소년과', '산부인과', '정형외과', '피부과', '정신건강의학과', '영상의학과', '응급의학과', '가정의학과', '일반의'];
+const hospitalTypes = ['의원', '병원', '종합병원', '상급종합병원', '요양병원', '검진센터', '기타'];
+const signupWorkTypeOptions = ['풀타임', '파트타임', '야간', '주말', '대진', '정기알바'];
+const signupWorkMethodOptions = ['상근', '비상근', '외래', '입원전담', '검진', '온콜', '재택/원격'];
 const inputClass = 'h-9 w-full border border-[#d8dce3] bg-white px-3 text-sm text-slate-900 outline-none focus:border-[#2f80ed] focus:ring-1 focus:ring-[#2f80ed]';
 const buttonBlue = 'h-10 bg-[#172c91] px-10 text-sm font-bold text-white transition hover:bg-[#0f216f] disabled:bg-slate-300 disabled:cursor-not-allowed';
 const buttonGray = 'h-10 bg-[#b7b7b7] px-10 text-sm font-bold text-white transition hover:bg-[#9f9f9f]';
@@ -123,6 +126,10 @@ function digits(value: string) {
   return value.replace(/\D/g, '');
 }
 
+function toggleList(arr: string[], value: string) {
+  return arr.includes(value) ? arr.filter((item) => item !== value) : [...arr, value];
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [modalView, setModalView] = useState<ModalView>(null);
@@ -138,10 +145,20 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [address1, setAddress1] = useState('');
   const [address2, setAddress2] = useState('');
+  const [accountType, setAccountType] = useState<'SEEKER' | 'DIRECTOR'>('SEEKER');
   const [jobTitle, setJobTitle] = useState('의사');
   const [hospitalName, setHospitalName] = useState('');
+  const [hospitalType, setHospitalType] = useState('의원');
+  const [hospitalRegion, setHospitalRegion] = useState('');
+  const [hospitalAddress, setHospitalAddress] = useState('');
   const [institutionNumber, setInstitutionNumber] = useState('');
   const [specialty, setSpecialty] = useState('내과');
+  const [recruitWorkTypes, setRecruitWorkTypes] = useState<string[]>(['풀타임']);
+  const [recruitWorkMethods, setRecruitWorkMethods] = useState<string[]>(['상근']);
+  const [recruitWorkHours, setRecruitWorkHours] = useState('주 5일, 09:00~18:00');
+  const [recruitPayMin, setRecruitPayMin] = useState('');
+  const [recruitPayMax, setRecruitPayMax] = useState('');
+  const [recruitIntro, setRecruitIntro] = useState('');
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [privacyAgreed, setPrivacyAgreed] = useState(false);
   const [patientInfoAgreed, setPatientInfoAgreed] = useState(false);
@@ -246,10 +263,24 @@ export default function LoginPage() {
           telephone,
           email,
           address: [address1, address2].filter(Boolean).join(' '),
-          jobTitle,
+          accountType,
+          jobTitle: accountType === 'DIRECTOR' && !jobTitle.trim() ? '병원 원장' : jobTitle,
           hospitalName,
+          hospitalType,
+          hospitalRegion,
+          hospitalAddress,
           institutionNumber,
           specialty,
+          recruitProfile: {
+            locationAddress: accountType === 'DIRECTOR' ? (hospitalAddress || [address1, address2].filter(Boolean).join(' ')) : [address1, address2].filter(Boolean).join(' '),
+            specialty,
+            workTypes: recruitWorkTypes,
+            workMethods: recruitWorkMethods,
+            workHours: recruitWorkHours,
+            minPay: recruitPayMin,
+            maxPay: recruitPayMax,
+            intro: recruitIntro,
+          },
           termsAgreed,
           privacyAgreed,
           patientInfoAgreed,
@@ -456,6 +487,28 @@ export default function LoginPage() {
               <div className={`mb-4 border px-4 py-3 text-sm ${error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>{error || message}</div>
             )}
             <div className="border-t-2 border-[#2f80ed]">
+              <div className="border-b border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="mb-3 text-sm font-black text-slate-800">이용 목적</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => { setAccountType('SEEKER'); if (jobTitle === '병원 원장') setJobTitle('의사'); }}
+                    className={`rounded-2xl border p-4 text-left ${accountType === 'SEEKER' ? 'border-blue-500 bg-blue-50 text-blue-900' : 'border-slate-200 bg-white text-slate-600'}`}
+                  >
+                    <strong className="block text-sm">구직 의료진</strong>
+                    <span className="mt-1 block text-xs leading-5">내 경력·희망조건을 저장하고 병원 추천을 받습니다.</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAccountType('DIRECTOR'); if (!jobTitle || jobTitle === '의사') setJobTitle('병원 원장'); }}
+                    className={`rounded-2xl border p-4 text-left ${accountType === 'DIRECTOR' ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-white text-slate-600'}`}
+                  >
+                    <strong className="block text-sm">병원 원장/관리자</strong>
+                    <span className="mt-1 block text-xs leading-5">병원정보와 채용 기준을 저장하고 후보 의료진 추천을 받습니다.</span>
+                  </button>
+                </div>
+                <p className="mt-3 text-xs font-semibold text-slate-500">아래 병원·매칭 정보는 모두 선택사항입니다. 지금 건너뛰고 가입 후 구인·구직 메뉴에서 다시 입력할 수 있습니다.</p>
+              </div>
               <SignupRow label="아이디">
                 <div className="flex gap-2">
                   <input value={licenseNumber} onChange={(e) => { setLicenseNumber(digits(e.target.value)); setLicenseVerified(false); }} className={`${inputClass} max-w-[190px]`} inputMode="numeric" required />
@@ -474,18 +527,51 @@ export default function LoginPage() {
               <SignupRow label="이메일"><input value={email} onChange={(e) => setEmail(e.target.value)} className={`${inputClass} max-w-[300px]`} type="email" /></SignupRow>
               <SignupRow label="주소">
                 <div className="space-y-2">
-                  <input value={address1} onChange={(e) => setAddress1(e.target.value)} className={`${inputClass} max-w-[480px]`} />
-                  <input value={address2} onChange={(e) => setAddress2(e.target.value)} className={`${inputClass} max-w-[480px]`} />
+                  <input value={address1} onChange={(e) => setAddress1(e.target.value)} className={`${inputClass} max-w-[480px]`} placeholder={accountType === 'DIRECTOR' ? '대표자/계정 주소 또는 병원 주소' : '내 기준 위치 또는 주소'} />
+                  <input value={address2} onChange={(e) => setAddress2(e.target.value)} className={`${inputClass} max-w-[480px]`} placeholder="상세주소(선택)" />
                 </div>
               </SignupRow>
               <SignupRow label="직업"><input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} className={`${inputClass} max-w-[300px]`} /></SignupRow>
-              <SignupRow label="병원명"><input value={hospitalName} onChange={(e) => setHospitalName(e.target.value)} className={`${inputClass} max-w-[300px]`} /></SignupRow>
+              <SignupRow label={accountType === 'DIRECTOR' ? '병원명(선택)' : '현재/최근 병원명(선택)'}><input value={hospitalName} onChange={(e) => setHospitalName(e.target.value)} className={`${inputClass} max-w-[300px]`} placeholder="건너뛰기 가능" /></SignupRow>
+              {accountType === 'DIRECTOR' && (
+                <>
+                  <SignupRow label="병원 유형(선택)">
+                    <select value={hospitalType} onChange={(e) => setHospitalType(e.target.value)} className={`${inputClass} max-w-[220px]`}>
+                      {hospitalTypes.map((item) => <option key={item} value={item}>{item}</option>)}
+                    </select>
+                  </SignupRow>
+                  <SignupRow label="병원 지역(선택)"><input value={hospitalRegion} onChange={(e) => setHospitalRegion(e.target.value)} className={`${inputClass} max-w-[300px]`} placeholder="예: 서울 강남구" /></SignupRow>
+                  <SignupRow label="병원 주소(선택)"><input value={hospitalAddress} onChange={(e) => setHospitalAddress(e.target.value)} className={`${inputClass} max-w-[480px]`} placeholder="매칭 거리 계산에 사용됩니다. 건너뛰기 가능" /></SignupRow>
+                </>
+              )}
               <SignupRow label="진료과목">
                 <select value={specialty} onChange={(e) => setSpecialty(e.target.value)} className={`${inputClass} max-w-[220px]`}>
                   {specialties.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
               </SignupRow>
               <SignupRow label="요양기관번호"><input value={institutionNumber} onChange={(e) => setInstitutionNumber(e.target.value)} className={`${inputClass} max-w-[190px]`} /></SignupRow>
+              <div className="bg-slate-50 px-4 py-4">
+                <p className="text-sm font-black text-slate-800">{accountType === 'DIRECTOR' ? '매칭용 병원/채용 기준 입력(선택)' : '구직 선호조건 입력(선택)'}</p>
+                <p className="mt-1 text-xs text-slate-500">선택 입력입니다. 건너뛰어도 가입할 수 있고, 이후 구인·구직 메뉴에서 수정할 수 있습니다.</p>
+              </div>
+              <SignupRow label={accountType === 'DIRECTOR' ? '채용 시간/형태' : '희망 시간/형태'}>
+                <SmallCheckGroup values={recruitWorkTypes} options={signupWorkTypeOptions} onChange={setRecruitWorkTypes} />
+              </SignupRow>
+              <SignupRow label={accountType === 'DIRECTOR' ? '채용 업무 방식' : '희망 업무 방식'}>
+                <SmallCheckGroup values={recruitWorkMethods} options={signupWorkMethodOptions} onChange={setRecruitWorkMethods} />
+              </SignupRow>
+              <SignupRow label={accountType === 'DIRECTOR' ? '채용 시간 상세' : '희망 근무시간'}><input value={recruitWorkHours} onChange={(e) => setRecruitWorkHours(e.target.value)} className={`${inputClass} max-w-[360px]`} placeholder="예: 주 5일 09:00~18:00" /></SignupRow>
+              <SignupRow label={accountType === 'DIRECTOR' ? '제시 페이(선택)' : '희망 페이(선택)'}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input value={recruitPayMin} onChange={(e) => setRecruitPayMin(digits(e.target.value))} className={`${inputClass} max-w-[120px]`} placeholder="최소" />
+                  <span className="text-xs text-slate-500">~</span>
+                  <input value={recruitPayMax} onChange={(e) => setRecruitPayMax(digits(e.target.value))} className={`${inputClass} max-w-[120px]`} placeholder="최대" />
+                  <span className="text-xs text-slate-500">만원</span>
+                </div>
+              </SignupRow>
+              <SignupRow label={accountType === 'DIRECTOR' ? '병원/채용 소개' : '경력/희망사항'}>
+                <textarea value={recruitIntro} onChange={(e) => setRecruitIntro(e.target.value)} className={`${inputClass} min-h-20 max-w-[480px] py-2`} placeholder="선택 입력 · 건너뛰기 가능" />
+              </SignupRow>
             </div>
             <div className="mt-7 text-center">
               <button disabled={isLoading || !licenseVerified} className={`${buttonBlue} w-40`}>{isLoading ? '처리중...' : '확인'}</button>
@@ -561,6 +647,23 @@ function SignupRow({ label, children }: { label: string; children: React.ReactNo
     <div className="grid min-h-[54px] grid-cols-[170px_1fr] border-b border-[#e5e5e5] text-sm">
       <div className="flex items-center justify-center bg-[#f1f2f6] font-bold text-slate-700">{label}</div>
       <div className="flex items-center px-3 py-2">{children}</div>
+    </div>
+  );
+}
+
+function SmallCheckGroup({ values, options, onChange }: { values: string[]; options: string[]; onChange: (values: string[]) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => onChange(toggleList(values, option))}
+          className={`rounded-full border px-3 py-1.5 text-xs font-bold ${values.includes(option) ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500'}`}
+        >
+          {option}
+        </button>
+      ))}
     </div>
   );
 }

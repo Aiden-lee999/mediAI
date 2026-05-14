@@ -25,6 +25,13 @@ type ConversationTurn = {
   medicalTerms: string[];
 };
 
+type SuggestedReply = {
+  speaker: Speaker;
+  text: string;
+  meaningKo: string;
+  intent: string;
+};
+
 type QuickPhrase = {
   ko: string;
   translations: Record<string, string>;
@@ -171,6 +178,8 @@ export default function TranslateMCA() {
   const [languageCode, setLanguageCode] = useState('en');
   const [speaker, setSpeaker] = useState<Speaker>('doctor');
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestedReply[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [status, setStatus] = useState('');
@@ -278,6 +287,7 @@ export default function TranslateMCA() {
       setInput('');
       setStatus('통역 완료');
       speak(turn.translation, currentLabels.targetSpeechCode);
+      void fetchSuggestedReplies(turn);
     } catch (err: any) {
       setStatus(`통역 오류: ${err?.message || '요청 실패'}`);
     } finally {
@@ -285,10 +295,52 @@ export default function TranslateMCA() {
     }
   };
 
+  const fetchSuggestedReplies = async (latestTurn: ConversationTurn) => {
+    setSuggestionsLoading(true);
+    setSuggestions([]);
+
+    try {
+      const context = [...turns, latestTurn].slice(-8).map((turn) => ({
+        speaker: turn.speaker,
+        original: turn.correctedInput || turn.original,
+        translation: turn.translation,
+      }));
+
+      const res = await fetch('/api/translate/suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latestSpeaker: latestTurn.speaker,
+          latestOriginal: latestTurn.correctedInput || latestTurn.original,
+          latestTranslation: latestTurn.translation,
+          patientLanguage: patientLanguage.apiLabel,
+          patientLanguageCode: patientLanguage.code,
+          context,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data?.suggestions)) return;
+      setSuggestions(data.suggestions.slice(0, 5));
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  };
+
+  const applySuggestedReply = (reply: SuggestedReply) => {
+    stopListening();
+    setSpeaker(reply.speaker);
+    setInput(reply.text);
+    setStatus(`${reply.speaker === 'doctor' ? '의료진' : '환자'} 예상 응답을 입력했습니다.`);
+  };
+
   const toggleSpeaker = () => {
     stopListening();
     setSpeaker((prev) => (prev === 'doctor' ? 'patient' : 'doctor'));
     setInput('');
+    setSuggestions([]);
   };
 
   return (
@@ -305,7 +357,11 @@ export default function TranslateMCA() {
             <select
               className="mt-2 w-full rounded-xl border border-white/20 bg-white px-3 py-2 font-bold text-slate-900 outline-none"
               value={languageCode}
-              onChange={(event) => setLanguageCode(event.target.value)}
+              onChange={(event) => {
+                setLanguageCode(event.target.value);
+                setSuggestions([]);
+                setInput('');
+              }}
             >
               {LANGUAGES.map((lang) => (
                 <option key={lang.code} value={lang.code}>{lang.flag} {lang.label}</option>
@@ -370,6 +426,37 @@ export default function TranslateMCA() {
         </div>
 
         {status && <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">{status}</div>}
+
+        {(suggestionsLoading || suggestions.length > 0) && (
+          <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-black text-indigo-900">맥락 기반 예상 응답</div>
+                <div className="text-[11px] font-semibold text-indigo-500">방금 대화에 이어질 가능성이 높은 답변/후속질문입니다.</div>
+              </div>
+              {suggestionsLoading && <span className="text-[11px] font-bold text-indigo-500">생성 중...</span>}
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-2">
+              {suggestions.map((reply, index) => (
+                <button
+                  key={`${reply.text}-${index}`}
+                  onClick={() => applySuggestedReply(reply)}
+                  className="rounded-2xl border border-indigo-100 bg-white p-3 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md"
+                >
+                  <div className="mb-1 flex items-center justify-between gap-2 text-[11px] font-black text-indigo-500">
+                    <span>{reply.speaker === 'doctor' ? '의료진 다음 질문' : `${patientLanguage.flag} 환자 예상 답변`}</span>
+                    {reply.intent && <span className="rounded-full bg-indigo-50 px-2 py-0.5">{reply.intent}</span>}
+                  </div>
+                  <div className="text-sm font-black leading-5 text-slate-900">{reply.text}</div>
+                  {reply.meaningKo && reply.meaningKo !== reply.text && (
+                    <div className="mt-1 text-[11px] font-semibold text-slate-400">{reply.meaningKo}</div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 grid grid-cols-2 gap-3">
           <button

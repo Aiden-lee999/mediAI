@@ -19,9 +19,14 @@ export async function POST(req: Request) {
     const email = String(body.email || '').trim() || null;
     const birthDate = String(body.birthDate || '').trim();
     const address = String(body.address || '').trim();
+    const accountType = String(body.accountType || '').trim().toUpperCase() === 'DIRECTOR' ? 'DIRECTOR' : 'SEEKER';
     const jobTitle = String(body.jobTitle || '').trim();
     const hospitalName = String(body.hospitalName || '').trim();
+    const hospitalType = String(body.hospitalType || '').trim();
+    const hospitalRegion = String(body.hospitalRegion || '').trim();
+    const hospitalAddress = String(body.hospitalAddress || '').trim();
     const institutionNumber = String(body.institutionNumber || '').trim();
+    const recruitProfile = (body.recruitProfile || {}) as Record<string, unknown>;
     const termsAgreed = body.termsAgreed === true;
     const privacyAgreed = body.privacyAgreed === true;
     const patientInfoAgreed = body.patientInfoAgreed === true;
@@ -63,6 +68,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: '이미 가입된 면허번호 또는 이메일입니다.' }, { status: 409 });
     }
 
+    const role = accountType === 'DIRECTOR' ? 'HOSPITAL_DIRECTOR' : 'DOCTOR';
+    const resolvedJobTitle = jobTitle || (accountType === 'DIRECTOR' ? '병원 원장' : '의사');
+    const hospital = accountType === 'DIRECTOR' && hospitalName
+      ? await prisma.hospital.create({
+          data: {
+            name: hospitalName,
+            type: hospitalType || null,
+            region: hospitalRegion || null,
+          },
+        })
+      : null;
+
     const user = await prisma.user.create({
       data: {
         doctorLicense: licenseNumber,
@@ -74,18 +91,36 @@ export async function POST(req: Request) {
         telephone: telephone || null,
         birthDate: birthDate || null,
         address: address || null,
-        jobTitle: jobTitle || null,
+        jobTitle: resolvedJobTitle || null,
         hospitalName: hospitalName || null,
         institutionNumber: institutionNumber || null,
-        title: jobTitle || null,
-        role: 'DOCTOR',
+        title: resolvedJobTitle || null,
+        role,
         status: 'ACTIVE',
+        hospitalId: hospital?.id || null,
         licenseVerifiedAt: new Date(),
         termsAgreedAt: new Date(),
         privacyAgreedAt: new Date(),
         patientInfoAgreedAt: new Date(),
         qualityImprovementAgreedAt: qualityImprovementAgreed ? new Date() : null,
         marketingAgreedAt: marketingAgreed ? new Date() : null,
+      },
+    });
+
+    await prisma.recruitProfile.create({
+      data: {
+        userId: user.id,
+        mode: accountType === 'DIRECTOR' ? 'HIRING' : 'SEEKING',
+        locationAddress: String(recruitProfile.locationAddress || hospitalAddress || address || '').trim() || null,
+        specialty: specialty || (verification as any).specialty || null,
+        workTypes: Array.isArray(recruitProfile.workTypes) ? recruitProfile.workTypes.map(String).filter(Boolean).join(',') : '',
+        workMethods: Array.isArray(recruitProfile.workMethods) ? recruitProfile.workMethods.map(String).filter(Boolean).join(',') : '',
+        workHours: String(recruitProfile.workHours || '').trim() || null,
+        minPay: Number.isFinite(Number(recruitProfile.minPay)) && String(recruitProfile.minPay || '').trim() ? Number(recruitProfile.minPay) : null,
+        maxPay: Number.isFinite(Number(recruitProfile.maxPay)) && String(recruitProfile.maxPay || '').trim() ? Number(recruitProfile.maxPay) : null,
+        priority: 'BALANCED',
+        availableFrom: null,
+        intro: String(recruitProfile.intro || '').trim() || null,
       },
     });
 
