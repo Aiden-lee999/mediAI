@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import acetaminophenRows from '../../../../../data/acetaminophen_products.json';
+import acetaminophenImageUrls from '../../../../../data/acetaminophen_image_urls.json';
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -43,13 +44,14 @@ function makeItem(row: SourceRow) {
   const rawPrice = String(row.price || '').trim().replace(/,/g, '');
   const fallbackPrice = type.includes('일반') ? '일반의약품 / 급여구분미확인' : '가격 미상 / 급여구분미확인';
   const priceLabel = parsePositivePrice(rawPrice) !== null ? `${rawPrice}원 / 급여구분미확인` : fallbackPrice;
+  const imageUrl = (acetaminophenImageUrls as Record<string, string>)[row.code] || '';
 
   return {
     id: row.code,
     productName: row.productName,
     ingredientName: row.ingredient || row.productEnglishName || row.additive || '아세트아미노펜',
     company: row.company || '-',
-    imageUrl: '',
+    imageUrl,
     priceLabel,
     reimbursement: '급여구분미확인',
     insuranceCode: row.code,
