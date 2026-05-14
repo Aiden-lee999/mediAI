@@ -185,6 +185,7 @@ export default function DashboardPage() {
     }
     setMessages([]);
     setAttachmentBase64(null);
+    setAttachmentNotice('');
     setCurrentSessionId(`session_${Date.now()}`);
     if(window.innerWidth < 768) setSidebarOpen(false);
   };
@@ -194,6 +195,43 @@ export default function DashboardPage() {
     setCurrentSessionId(sessionData.id);
     setMessages(sessionData.history || []);
     if(window.innerWidth < 768) setSidebarOpen(false);
+  };
+
+  const deleteSession = async (sessionId: string) => {
+    const filteredSessions = sessions.filter((session) => session.id !== sessionId);
+    setSessions(filteredSessions);
+    localStorage.setItem('medSessions', JSON.stringify(filteredSessions));
+
+    if (currentSessionId === sessionId) {
+      setMessages([]);
+      setAttachmentBase64(null);
+      setAttachmentNotice('');
+      setCurrentSessionId(`session_${Date.now()}`);
+    }
+
+    try {
+      await fetch(`/api/sessions?sessionId=${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+    } catch (error) {
+      console.error('최근 기록 삭제 실패:', error);
+    }
+  };
+
+  const clearAllSessions = async () => {
+    if (sessions.length === 0) return;
+    if (!window.confirm('최근 기록을 모두 삭제할까요?')) return;
+
+    setSessions([]);
+    setMessages([]);
+    setAttachmentBase64(null);
+    setAttachmentNotice('');
+    setCurrentSessionId(`session_${Date.now()}`);
+    localStorage.setItem('medSessions', '[]');
+
+    try {
+      await fetch('/api/sessions?all=true', { method: 'DELETE' });
+    } catch (error) {
+      console.error('전체 최근 기록 삭제 실패:', error);
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -509,13 +547,37 @@ export default function DashboardPage() {
                 마이페이지 및 설정
            </button>
         </div>        <div className="flex-1 overflow-y-auto">
-           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">최근 기록</h3>
+           <div className="mb-3 flex items-center justify-between gap-2">
+             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">최근 기록</h3>
+             {sessions.length > 0 && (
+               <button
+                 onClick={clearAllSessions}
+                 className="text-[11px] font-semibold text-slate-500 hover:text-red-300 transition"
+                 title="최근 기록 전체 삭제"
+               >
+                 전체 삭제
+               </button>
+             )}
+           </div>
            <div className="flex flex-col gap-1">
              {sessions.slice(0,10).map((s, idx) => (
-                <div key={idx} onClick={() => loadSession(s)} className="text-xs text-slate-400 hover:text-white px-2 py-1.5 rounded hover:bg-slate-800 cursor-pointer truncate">
-                   {s.title}
+                <div key={s.id || idx} onClick={() => loadSession(s)} className="group flex items-center gap-1 rounded px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800 hover:text-white cursor-pointer">
+                   <span className="min-w-0 flex-1 truncate">{s.title}</span>
+                   <button
+                     onClick={(event) => {
+                       event.stopPropagation();
+                       deleteSession(s.id);
+                     }}
+                     className="hidden h-5 w-5 flex-shrink-0 items-center justify-center rounded text-slate-500 hover:bg-red-500/20 hover:text-red-200 group-hover:flex"
+                     title="이 최근 기록 삭제"
+                   >
+                     ×
+                   </button>
                 </div>
              ))}
+             {sessions.length === 0 && (
+                <div className="px-2 py-1.5 text-xs text-slate-600">저장된 최근 기록이 없습니다.</div>
+             )}
            </div>
         </div>
         

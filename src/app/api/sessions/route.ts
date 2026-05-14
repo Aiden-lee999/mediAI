@@ -90,3 +90,49 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ success: true });
 }
+
+export async function DELETE(req: Request) {
+  const user = await getDemoUser();
+  const { searchParams } = new URL(req.url);
+  const sessionId = searchParams.get('sessionId');
+  const clearAll = searchParams.get('all') === 'true';
+
+  const conversations = await prisma.conversation.findMany({
+    where: clearAll ? { userId: user.id } : { id: sessionId || '', userId: user.id },
+    select: { id: true }
+  });
+
+  if (!clearAll && conversations.length === 0) {
+    return NextResponse.json({ success: false, error: '삭제할 최근 기록을 찾지 못했습니다.' }, { status: 404 });
+  }
+
+  const conversationIds = conversations.map((conversation) => conversation.id);
+  if (conversationIds.length === 0) {
+    return NextResponse.json({ success: true, deleted: 0 });
+  }
+
+  const messageIds = (await prisma.message.findMany({
+    where: { conversationId: { in: conversationIds } },
+    select: { id: true }
+  })).map((message) => message.id);
+
+  await prisma.$transaction(async (tx) => {
+    if (messageIds.length > 0) {
+      await tx.sourceReference.deleteMany({ where: { messageId: { in: messageIds } } });
+      await tx.feedback.deleteMany({ where: { messageId: { in: messageIds } } });
+      await tx.insightSummary.deleteMany({ where: { messageId: { in: messageIds } } });
+      await tx.bookmark.deleteMany({ where: { messageId: { in: messageIds } } });
+      await tx.messageTag.deleteMany({ where: { messageId: { in: messageIds } } });
+      await tx.reviewWorkflow.deleteMany({ where: { messageId: { in: messageIds } } });
+      await tx.message.updateMany({
+        where: { parentMessageId: { in: messageIds } },
+        data: { parentMessageId: null }
+      });
+      await tx.message.deleteMany({ where: { id: { in: messageIds } } });
+    }
+
+    await tx.conversation.deleteMany({ where: { id: { in: conversationIds }, userId: user.id } });
+  });
+
+  return NextResponse.json({ success: true, deleted: conversationIds.length });
+}
