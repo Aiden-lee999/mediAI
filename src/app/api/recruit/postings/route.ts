@@ -82,3 +82,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: error?.message || '공고 저장 실패' }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const id = url.searchParams.get('id') || '';
+    const userId = url.searchParams.get('userId') || undefined;
+    const license = url.searchParams.get('license') || undefined;
+    const user = await findUser(userId, license);
+    if (!user) return NextResponse.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, { status: 404 });
+    if (!isHospitalDirector(user)) {
+      return NextResponse.json({ success: false, error: '구인 공고 삭제는 병원 원장/관리자 계정에서만 가능합니다.' }, { status: 403 });
+    }
+    if (!id) return NextResponse.json({ success: false, error: '삭제할 공고 ID가 필요합니다.' }, { status: 400 });
+
+    const deleted = await prisma.recruitPosting.deleteMany({ where: { id, ownerId: user.id } });
+    if (deleted.count === 0) {
+      return NextResponse.json({ success: false, error: '삭제할 공고를 찾지 못했습니다.' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, deleted: deleted.count });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error?.message || '공고 삭제 실패' }, { status: 500 });
+  }
+}

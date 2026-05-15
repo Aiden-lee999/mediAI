@@ -45,6 +45,7 @@ type FormState = {
 };
 
 type PostingForm = {
+  id?: string;
   hospitalDirectoryId: string;
   title: string;
   hospitalName: string;
@@ -77,6 +78,7 @@ const emptyProfile = (user?: Partial<AppUser>): FormState => ({
 });
 
 const emptyPosting = (user?: Partial<AppUser>): PostingForm => ({
+  id: undefined,
   hospitalDirectoryId: user?.hospitalDirectoryId || '',
   title: `${user?.specialty || '진료과'} 전문의 초빙`,
   hospitalName: user?.hospitalName || '',
@@ -115,6 +117,26 @@ function isDirectorLocal(user: AppUser | null) {
   return /원장|병원장|대표|개원의|director|owner|admin|hospital_director|hospital-admin/i.test(`${user?.name || ''} ${user?.jobTitle || ''} ${user?.role || ''}`);
 }
 
+function postingToForm(posting: any): PostingForm {
+  return {
+    id: posting.id,
+    hospitalDirectoryId: posting.hospitalDirectoryId || '',
+    title: posting.title || '',
+    hospitalName: posting.hospitalName || '',
+    locationAddress: posting.locationAddress || '',
+    latitude: posting.latitude ? String(posting.latitude) : '',
+    longitude: posting.longitude ? String(posting.longitude) : '',
+    specialty: posting.specialty || '내과',
+    workTypes: toArray(posting.workTypes),
+    workMethods: toArray(posting.workMethods),
+    workHours: posting.workHours || '',
+    payMin: posting.payMin ? String(posting.payMin) : '',
+    payMax: posting.payMax ? String(posting.payMax) : '',
+    priority: posting.priority || 'BALANCED',
+    description: posting.description || '',
+  };
+}
+
 export default function RecruitMatch() {
   const [user, setUser] = useState<AppUser | null>(null);
   const [isDirector, setIsDirector] = useState(false);
@@ -126,6 +148,8 @@ export default function RecruitMatch() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [postingModalOpen, setPostingModalOpen] = useState(false);
 
   const userId = user?.id || '';
 
@@ -206,6 +230,7 @@ export default function RecruitMatch() {
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || '프로필 저장 실패');
       setMessage(isDirector ? '병원/채용 기준이 저장되었습니다.' : '구직 선호조건이 저장되었습니다.');
+      setProfileModalOpen(false);
       await load();
     } catch (e: any) {
       setError(e?.message || '프로필 저장 중 오류가 발생했습니다.');
@@ -227,11 +252,43 @@ export default function RecruitMatch() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || '공고 저장 실패');
-      setMessage('구인 공고가 등록되었습니다. 후보자 매칭을 갱신했습니다.');
+      setMessage(posting.id ? '구인 공고가 수정되었습니다. 후보자 매칭을 갱신했습니다.' : '구인 공고가 등록되었습니다. 후보자 매칭을 갱신했습니다.');
       setPosting(emptyPosting(user || undefined));
+      setPostingModalOpen(false);
       await load();
     } catch (e: any) {
       setError(e?.message || '공고 저장 중 오류가 발생했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openNewPosting = () => {
+    setPosting(emptyPosting(user || undefined));
+    setPostingModalOpen(true);
+  };
+
+  const openEditPosting = (target: any) => {
+    setPosting(postingToForm(target));
+    setPostingModalOpen(true);
+  };
+
+  const deletePosting = async (postingId: string) => {
+    if (!userId) return setError('로그인 정보가 없습니다. 다시 로그인해 주세요.');
+    const ok = window.confirm('이 구인 공고를 삭제할까요?');
+    if (!ok) return;
+    setLoading(true);
+    setError('');
+    setMessage('');
+    try {
+      const res = await fetch(`/api/recruit/postings?id=${encodeURIComponent(postingId)}&userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || '공고 삭제 실패');
+      setMessage('구인 공고가 삭제되었습니다.');
+      if (selected?.posting?.id === postingId) setSelected(null);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || '공고 삭제 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
@@ -288,7 +345,7 @@ export default function RecruitMatch() {
           </div>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-blue-50">
             {isDirector
-              ? '병원 원장/관리자 계정은 구인 공고를 등록하고, 진료과·근무조건·페이·거리·우선순위 기준으로 어울리는 의료진을 자동 추천받습니다.'
+              ? '병원 원장/관리자 계정은 구인 공고를 등록하고, 전공·경력·근무조건·페이 기준으로 어울리는 의료진을 자동 추천받습니다.'
               : '의료진 계정은 희망 근무조건을 저장하면 진료과·근무시간·근무방법·페이·거리·중요도 기준으로 나에게 맞는 병원을 자동 추천받습니다.'}
           </p>
         </div>
@@ -302,74 +359,45 @@ export default function RecruitMatch() {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[420px_1fr]">
         <div className="space-y-6">
-          <Panel title={isDirector ? '매칭용 병원정보 입력하기' : '내 구직 선호조건 입력하기'} subtitle={isDirector ? '병원 주소와 채용 기준을 입력하면 후보 의료진과의 거리·조건 매칭에 사용됩니다.' : '내 기준 위치와 희망 조건을 입력하면 병원 공고와 자동 매칭합니다.'}>
-            <label className="block">
-              <span className="mb-1 block text-xs font-black text-slate-600">{isDirector ? '병원 위치' : '내 기준 위치'}</span>
-              <AddressAutocomplete
-                value={profile.locationAddress}
-                onChange={(value) => setProfile({ ...profile, locationAddress: value, latitude: '', longitude: '' })}
-                onSelect={applyProfileAddress}
-                placeholder="도로명 또는 지번으로 검색하세요"
-              />
-            </label>
-            <FormSelect label="해당과" value={profile.specialty} onChange={(v) => setProfile({ ...profile, specialty: v })} options={specialties} />
-            <CheckGroup label={isDirector ? '채용 시간/형태' : '희망 시간/형태'} values={profile.workTypes} options={workTypeOptions} onChange={(v) => setProfile({ ...profile, workTypes: v })} />
-            <CheckGroup label={isDirector ? '채용 업무 방식' : '희망 업무 방식'} values={profile.workMethods} options={workMethodOptions} onChange={(v) => setProfile({ ...profile, workMethods: v })} />
-            <FormInput label={isDirector ? '채용 시간 상세' : '희망 근무시간'} value={profile.workHours} onChange={(v) => setProfile({ ...profile, workHours: v })} placeholder="예: 주 4일, 오전 진료만" />
-            <div className="grid grid-cols-2 gap-3">
-              <FormInput label={isDirector ? '제시 최소 페이' : '희망 최소 페이'} value={profile.minPay} onChange={(v) => setProfile({ ...profile, minPay: v.replace(/\D/g, '') })} placeholder="만원" />
-              <FormInput label={isDirector ? '제시 최대 페이' : '희망 최대 페이'} value={profile.maxPay} onChange={(v) => setProfile({ ...profile, maxPay: v.replace(/\D/g, '') })} placeholder="만원" />
+          <Panel title={isDirector ? '매칭용 병원정보' : '내 구직 선호조건'} subtitle="버튼을 눌러 팝업에서 입력·저장·수정합니다.">
+            <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
+              <p className="font-black text-slate-900">{profile.specialty || '진료과 미입력'} · {profile.workHours || '시간 미입력'}</p>
+              <p className="mt-1 text-xs text-slate-500">{profile.locationAddress || '기준 위치를 등록해 주세요.'}</p>
+              <p className="mt-2 text-xs text-slate-500">{profile.workTypes.join(', ') || '근무형태 미입력'} · {profile.workMethods.join(', ') || '근무방식 미입력'}</p>
             </div>
-            <FormSelect label="가장 중요한 기준" value={profile.priority} onChange={(v) => setProfile({ ...profile, priority: v })} options={priorities.map((p) => p.value)} labels={Object.fromEntries(priorities.map((p) => [p.value, p.label]))} />
-            {!isDirector && <FormInput label="시작 가능일" value={profile.availableFrom} onChange={(v) => setProfile({ ...profile, availableFrom: v })} placeholder="예: 즉시 / 2026-06-01" />}
-            <FormTextarea label={isDirector ? '병원/채용 소개' : '소개/요구사항'} value={profile.intro} onChange={(v) => setProfile({ ...profile, intro: v })} placeholder={isDirector ? '진료량, 장비, 복지, 협진 구조 등을 입력하세요.' : '중요한 조건, 선호 지역, 가능한 업무 등을 입력하세요.'} />
-            <button onClick={saveProfile} disabled={loading} className="h-11 w-full rounded-xl bg-blue-700 text-sm font-black text-white hover:bg-blue-800 disabled:bg-slate-300">
-              {loading ? '저장 중...' : isDirector ? '병원정보 저장 후 후보 매칭' : '구직조건 저장 후 병원 매칭'}
+            <button onClick={() => setProfileModalOpen(true)} className="h-11 w-full rounded-xl bg-blue-700 text-sm font-black text-white hover:bg-blue-800">
+              {isDirector ? '병원정보 입력/수정' : '구직조건 입력/수정'}
             </button>
           </Panel>
 
           {isDirector && (
-            <Panel title="구인 공고 등록" subtitle="등록된 공고별로 어울리는 후보 의료진을 자동 추천합니다.">
-              <FormInput label="공고 제목" value={posting.title} onChange={(v) => setPosting({ ...posting, title: v })} />
-              <label className="block">
-                <span className="mb-1 block text-xs font-black text-slate-600">병원명</span>
-                <HospitalAutocomplete
-                  value={posting.hospitalName}
-                  onChange={(value) => setPosting({ ...posting, hospitalName: value, hospitalDirectoryId: '' })}
-                  onSelect={applyPostingHospital}
-                  placeholder="병의원명을 입력하면 전국 병의원 DB에서 자동검색됩니다"
-                  className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                />
-                {posting.hospitalDirectoryId && <p className="mt-1 text-xs font-bold text-emerald-600">공식 병의원 DB와 연결되었습니다.</p>}
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-black text-slate-600">근무지 주소</span>
-                <AddressAutocomplete
-                  value={posting.locationAddress}
-                  onChange={(value) => setPosting({ ...posting, locationAddress: value, latitude: '', longitude: '' })}
-                  onSelect={applyPostingAddress}
-                  placeholder="도로명 또는 지번으로 검색하세요"
-                />
-              </label>
-              <FormSelect label="해당과" value={posting.specialty} onChange={(v) => setPosting({ ...posting, specialty: v })} options={specialties} />
-              <CheckGroup label="근무 시간/형태" values={posting.workTypes} options={workTypeOptions} onChange={(v) => setPosting({ ...posting, workTypes: v })} />
-              <CheckGroup label="근무 방법" values={posting.workMethods} options={workMethodOptions} onChange={(v) => setPosting({ ...posting, workMethods: v })} />
-              <FormInput label="근무 시간 상세" value={posting.workHours} onChange={(v) => setPosting({ ...posting, workHours: v })} />
-              <div className="grid grid-cols-2 gap-3">
-                <FormInput label="최소 페이" value={posting.payMin} onChange={(v) => setPosting({ ...posting, payMin: v.replace(/\D/g, '') })} placeholder="만원" />
-                <FormInput label="최대 페이" value={posting.payMax} onChange={(v) => setPosting({ ...posting, payMax: v.replace(/\D/g, '') })} placeholder="만원" />
+            <Panel title="구인 공고 관리" subtitle="공고를 여러 개 등록하고, 각 공고를 수정하거나 삭제할 수 있습니다.">
+              <button onClick={openNewPosting} className="h-11 w-full rounded-xl bg-emerald-700 text-sm font-black text-white hover:bg-emerald-800">+ 새 구인 공고 등록</button>
+              <div className="space-y-3">
+                {postings.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-500">등록된 구인 공고가 없습니다.</div>
+                ) : postings.map((p) => (
+                  <div key={p.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-black text-slate-900">{p.title}</p>
+                        <p className="mt-1 text-xs text-slate-500">{p.hospitalName} · {p.specialty || '전체과'} · {p.workHours || '시간 협의'}</p>
+                      </div>
+                      <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">{p.status}</span>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button onClick={() => openEditPosting(p)} className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">수정</button>
+                      <button onClick={() => deletePosting(p.id)} className="flex-1 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100">삭제</button>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <FormSelect label="중요 기준" value={posting.priority} onChange={(v) => setPosting({ ...posting, priority: v })} options={priorities.map((p) => p.value)} labels={Object.fromEntries(priorities.map((p) => [p.value, p.label]))} />
-              <FormTextarea label="공고 설명" value={posting.description} onChange={(v) => setPosting({ ...posting, description: v })} placeholder="진료량, 장비, 복지, 협진 구조 등을 입력하세요." />
-              <button onClick={savePosting} disabled={loading} className="h-11 w-full rounded-xl bg-emerald-700 text-sm font-black text-white hover:bg-emerald-800 disabled:bg-slate-300">
-                구인 공고 등록
-              </button>
             </Panel>
           )}
         </div>
 
         <div className="space-y-6">
-          <Panel title={isDirector ? 'AI 추천 후보 의료진' : 'AI 추천 병원'} subtitle="매칭 점수는 진료과, 페이, 근무시간, 근무방법, 거리, 우선순위를 합산합니다.">
+          <Panel title={isDirector ? 'AI 추천 후보 의료진' : 'AI 추천 병원'} subtitle={isDirector ? '후보 추천은 전공, 경력/소개, 희망 근무조건, 페이를 중심으로 표시합니다.' : '매칭 점수는 진료과, 페이, 근무시간, 근무방법, 거리, 우선순위를 합산합니다.'}>
             {topMatches.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
                 {isDirector ? '구인 공고를 등록하면 후보 의료진 추천이 표시됩니다.' : '구직 선호조건을 저장하면 추천 병원이 표시됩니다.'}
@@ -382,26 +410,107 @@ export default function RecruitMatch() {
           </Panel>
 
           {selected && <RoutePanel match={selected} isDirector={isDirector} />}
-
-          {isDirector && postings.length > 0 && (
-            <Panel title="내 구인 공고" subtitle="현재 활성 공고 목록입니다.">
-              <div className="space-y-3">
-                {postings.map((p) => (
-                  <div key={p.id} className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-black text-slate-900">{p.title}</p>
-                        <p className="mt-1 text-xs text-slate-500">{p.hospitalName} · {p.specialty || '전체과'} · {p.workHours || '시간 협의'}</p>
-                      </div>
-                      <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">{p.status}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Panel>
-          )}
         </div>
       </div>
+
+      {profileModalOpen && (
+        <Modal title={isDirector ? '매칭용 병원정보 입력/수정' : '내 구직 선호조건 입력/수정'} onClose={() => setProfileModalOpen(false)}>
+          <ProfileForm profile={profile} setProfile={setProfile} isDirector={isDirector} loading={loading} onSave={saveProfile} onAddressSelect={applyProfileAddress} />
+        </Modal>
+      )}
+
+      {postingModalOpen && isDirector && (
+        <Modal title={posting.id ? '구인 공고 수정' : '구인 공고 등록'} onClose={() => setPostingModalOpen(false)}>
+          <PostingFormView posting={posting} setPosting={setPosting} loading={loading} onSave={savePosting} onHospitalSelect={applyPostingHospital} onAddressSelect={applyPostingAddress} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <h3 className="text-lg font-black text-slate-900">{title}</h3>
+          <button onClick={onClose} className="rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-600 hover:bg-slate-200">닫기</button>
+        </div>
+        <div className="max-h-[calc(90vh-73px)] overflow-y-auto p-6">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileForm({ profile, setProfile, isDirector, loading, onSave, onAddressSelect }: { profile: FormState; setProfile: (profile: FormState) => void; isDirector: boolean; loading: boolean; onSave: () => void; onAddressSelect: (address: AddressSuggestion) => void }) {
+  return (
+    <div className="space-y-4">
+      <label className="block">
+        <span className="mb-1 block text-xs font-black text-slate-600">{isDirector ? '병원 위치' : '내 기준 위치'}</span>
+        <AddressAutocomplete
+          value={profile.locationAddress}
+          onChange={(value) => setProfile({ ...profile, locationAddress: value, latitude: '', longitude: '' })}
+          onSelect={onAddressSelect}
+          placeholder="도로명 또는 지번으로 검색하세요"
+        />
+      </label>
+      <FormSelect label="해당과" value={profile.specialty} onChange={(v) => setProfile({ ...profile, specialty: v })} options={specialties} />
+      <CheckGroup label={isDirector ? '채용 시간/형태' : '희망 시간/형태'} values={profile.workTypes} options={workTypeOptions} onChange={(v) => setProfile({ ...profile, workTypes: v })} />
+      <CheckGroup label={isDirector ? '채용 업무 방식' : '희망 업무 방식'} values={profile.workMethods} options={workMethodOptions} onChange={(v) => setProfile({ ...profile, workMethods: v })} />
+      <FormInput label={isDirector ? '채용 시간 상세' : '희망 근무시간'} value={profile.workHours} onChange={(v) => setProfile({ ...profile, workHours: v })} placeholder="예: 주 4일, 오전 진료만" />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <FormInput label={isDirector ? '제시 최소 페이' : '희망 최소 페이'} value={profile.minPay} onChange={(v) => setProfile({ ...profile, minPay: v.replace(/\D/g, '') })} placeholder="만원" />
+        <FormInput label={isDirector ? '제시 최대 페이' : '희망 최대 페이'} value={profile.maxPay} onChange={(v) => setProfile({ ...profile, maxPay: v.replace(/\D/g, '') })} placeholder="만원" />
+      </div>
+      <FormSelect label="가장 중요한 기준" value={profile.priority} onChange={(v) => setProfile({ ...profile, priority: v })} options={priorities.map((p) => p.value)} labels={Object.fromEntries(priorities.map((p) => [p.value, p.label]))} />
+      {!isDirector && <FormInput label="시작 가능일" value={profile.availableFrom} onChange={(v) => setProfile({ ...profile, availableFrom: v })} placeholder="예: 즉시 / 2026-06-01" />}
+      <FormTextarea label={isDirector ? '병원/채용 소개' : '소개/경력/요구사항'} value={profile.intro} onChange={(v) => setProfile({ ...profile, intro: v })} placeholder={isDirector ? '진료량, 장비, 복지, 협진 구조 등을 입력하세요.' : '경력, 가능한 업무, 중요한 조건을 입력하세요.'} />
+      <button onClick={onSave} disabled={loading} className="h-11 w-full rounded-xl bg-blue-700 text-sm font-black text-white hover:bg-blue-800 disabled:bg-slate-300">
+        {loading ? '저장 중...' : isDirector ? '병원정보 저장 후 후보 매칭' : '구직조건 저장 후 병원 매칭'}
+      </button>
+    </div>
+  );
+}
+
+function PostingFormView({ posting, setPosting, loading, onSave, onHospitalSelect, onAddressSelect }: { posting: PostingForm; setPosting: (posting: PostingForm) => void; loading: boolean; onSave: () => void; onHospitalSelect: (hospital: HospitalSuggestion) => void; onAddressSelect: (address: AddressSuggestion) => void }) {
+  return (
+    <div className="space-y-4">
+      <FormInput label="공고 제목" value={posting.title} onChange={(v) => setPosting({ ...posting, title: v })} />
+      <label className="block">
+        <span className="mb-1 block text-xs font-black text-slate-600">병원명</span>
+        <HospitalAutocomplete
+          value={posting.hospitalName}
+          onChange={(value) => setPosting({ ...posting, hospitalName: value, hospitalDirectoryId: '' })}
+          onSelect={onHospitalSelect}
+          placeholder="병의원명을 입력하면 전국 병의원 DB에서 자동검색됩니다"
+          className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        />
+        {posting.hospitalDirectoryId && <p className="mt-1 text-xs font-bold text-emerald-600">공식 병의원 DB와 연결되었습니다.</p>}
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs font-black text-slate-600">근무지 주소</span>
+        <AddressAutocomplete
+          value={posting.locationAddress}
+          onChange={(value) => setPosting({ ...posting, locationAddress: value, latitude: '', longitude: '' })}
+          onSelect={onAddressSelect}
+          placeholder="도로명 또는 지번으로 검색하세요"
+        />
+      </label>
+      <FormSelect label="해당과" value={posting.specialty} onChange={(v) => setPosting({ ...posting, specialty: v })} options={specialties} />
+      <CheckGroup label="근무 시간/형태" values={posting.workTypes} options={workTypeOptions} onChange={(v) => setPosting({ ...posting, workTypes: v })} />
+      <CheckGroup label="근무 방법" values={posting.workMethods} options={workMethodOptions} onChange={(v) => setPosting({ ...posting, workMethods: v })} />
+      <FormInput label="근무 시간 상세" value={posting.workHours} onChange={(v) => setPosting({ ...posting, workHours: v })} />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <FormInput label="최소 페이" value={posting.payMin} onChange={(v) => setPosting({ ...posting, payMin: v.replace(/\D/g, '') })} placeholder="만원" />
+        <FormInput label="최대 페이" value={posting.payMax} onChange={(v) => setPosting({ ...posting, payMax: v.replace(/\D/g, '') })} placeholder="만원" />
+      </div>
+      <FormSelect label="중요 기준" value={posting.priority} onChange={(v) => setPosting({ ...posting, priority: v })} options={priorities.map((p) => p.value)} labels={Object.fromEntries(priorities.map((p) => [p.value, p.label]))} />
+      <FormTextarea label="공고 설명" value={posting.description} onChange={(v) => setPosting({ ...posting, description: v })} placeholder="진료량, 장비, 복지, 협진 구조 등을 입력하세요." />
+      <button onClick={onSave} disabled={loading} className="h-11 w-full rounded-xl bg-emerald-700 text-sm font-black text-white hover:bg-emerald-800 disabled:bg-slate-300">
+        {loading ? '저장 중...' : posting.id ? '구인 공고 수정 저장' : '구인 공고 등록'}
+      </button>
     </div>
   );
 }
@@ -462,7 +571,10 @@ function CheckGroup({ label, values, options, onChange }: { label: string; value
 
 function MatchCard({ match, isDirector, onSelect }: { match: any; isDirector: boolean; onSelect: (match: any) => void }) {
   const targetTitle = isDirector ? `${match.candidate?.user?.name || '후보 의료진'} ${match.candidate?.specialty || ''}` : match.posting?.title;
-  const sub = isDirector ? `${match.candidate?.workHours || '근무시간 협의'} · ${match.candidate?.workMethods || '근무방법 협의'}` : `${match.posting?.hospitalName} · ${match.posting?.specialty || '전체과'}`;
+  const sub = isDirector ? `${match.candidate?.user?.jobTitle || '의료진'} · ${match.candidate?.workHours || '근무시간 협의'}` : `${match.posting?.hospitalName} · ${match.posting?.specialty || '전체과'}`;
+  const candidateCareer = match.candidate?.intro || match.candidate?.user?.jobTitle || '경력 미입력';
+  const candidatePay = match.candidate?.minPay || match.candidate?.maxPay ? `${match.candidate?.minPay || '협의'}~${match.candidate?.maxPay || '협의'}만원` : '페이 협의';
+  const displayReasons = (match.score?.reasons || []).filter((reason: string) => !isDirector || !/거리|출퇴근|차량/.test(reason));
   return (
     <button onClick={() => onSelect(match)} className="rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg">
       <div className="flex items-start justify-between gap-3">
@@ -473,12 +585,22 @@ function MatchCard({ match, isDirector, onSelect }: { match: any; isDirector: bo
         <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-black text-white">{match.score?.score}점</span>
       </div>
       <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-        <Metric label="등급" value={match.score?.grade || '-'} />
-        <Metric label="거리" value={match.route?.distanceKm ? `${match.route.distanceKm}km` : '지도확인'} />
-        <Metric label="차량" value={match.route?.drivingMinutes ? `${match.route.drivingMinutes}분` : '확인'} />
+        {isDirector ? (
+          <>
+            <Metric label="전공" value={match.candidate?.specialty || match.candidate?.user?.specialty || '미입력'} />
+            <Metric label="경력/직함" value={String(candidateCareer).slice(0, 16)} />
+            <Metric label="희망 페이" value={candidatePay} />
+          </>
+        ) : (
+          <>
+            <Metric label="등급" value={match.score?.grade || '-'} />
+            <Metric label="거리" value={match.route?.distanceKm ? `${match.route.distanceKm}km` : '지도확인'} />
+            <Metric label="차량" value={match.route?.drivingMinutes ? `${match.route.drivingMinutes}분` : '확인'} />
+          </>
+        )}
       </div>
       <ul className="mt-4 space-y-1 text-xs leading-5 text-slate-600">
-        {(match.score?.reasons || []).slice(0, 3).map((r: string) => <li key={r}>• {r}</li>)}
+        {displayReasons.slice(0, 3).map((r: string) => <li key={r}>• {r}</li>)}
       </ul>
       {(match.score?.warnings || []).length > 0 && <p className="mt-3 text-xs font-bold text-amber-700">조건 확인: {match.score.warnings[0]}</p>}
     </button>
@@ -506,6 +628,7 @@ function RoutePanel({ match, isDirector }: { match: any; isDirector: boolean }) 
     const originAddress = route.originAddress || (isDirector ? candidate.locationAddress : '');
     const destinationAddress = route.destinationAddress || posting.locationAddress || '';
     setLiveRoute(route);
+    if (isDirector) return;
     if (!originAddress || !destinationAddress) return;
 
     let cancelled = false;
@@ -539,43 +662,54 @@ function RoutePanel({ match, isDirector }: { match: any; isDirector: boolean }) 
   const route = liveRoute || {};
   const origin = route.originAddress || (isDirector ? (candidate.locationAddress || '후보 위치') : '내 위치');
   const destination = route.destinationAddress || posting.locationAddress || '병원 위치';
+  const detailReasons = (match.score?.reasons || []).filter((reason: string) => !isDirector || !/거리|출퇴근|차량/.test(reason));
+  const detailWarnings = (match.score?.warnings || ['면접 전 실제 근무조건과 계약조건을 확인하세요.']).filter((warning: string) => !isDirector || !/거리|출퇴근|좌표/.test(warning));
   return (
-    <Panel title="추천 상세 및 이동 경로" subtitle="네이버 지도 API로 차량 이동시간을 우선 계산하고, 대중교통/도보는 지도 링크와 거리 기반 추정으로 함께 안내합니다.">
+    <Panel title={isDirector ? '추천 후보의사 상세' : '추천 상세 및 이동 경로'} subtitle={isDirector ? '후보의 전공, 경력, 희망 조건을 중심으로 확인합니다.' : '추천 병원 위치와 이동 정보를 확인합니다.'}>
       <div className="rounded-3xl border border-blue-100 bg-blue-50 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xl font-black text-slate-900">{isDirector ? `${candidate.user?.name || '후보'} 매칭` : posting.title}</p>
-            <p className="mt-1 text-sm text-slate-600">{posting.hospitalName} · {posting.locationAddress}</p>
+            <p className="mt-1 text-sm text-slate-600">{isDirector ? `${candidate.specialty || candidate.user?.specialty || '전공 미입력'} · ${candidate.user?.jobTitle || '직함 미입력'}` : `${posting.hospitalName} · ${posting.locationAddress}`}</p>
           </div>
           <span className="rounded-full bg-blue-700 px-4 py-2 text-sm font-black text-white">AI Match {match.score?.score}점</span>
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Metric label="차량" value={route.drivingMinutes ? `${route.drivingMinutes}분` : '지도 확인'} />
-          <Metric label="거리" value={route.distanceKm ? `${route.distanceKm}km` : '주소 기반'} />
-          <Metric label="대중교통" value={route.transitMinutes ? `${route.transitMinutes}분` : '지도 확인'} />
-          <Metric label="도보" value={route.walkingMinutes ? `${route.walkingMinutes}분` : '지도 확인'} />
-        </div>
-        <div className="mt-5 rounded-2xl bg-white p-4 text-sm leading-6 text-slate-700">
-          <strong>경로:</strong> {origin} → {destination}<br />
-          <strong>계산 방식:</strong> {routeLoading ? '실시간 경로 계산 중...' : route.source === 'naver-directions' ? '네이버 지도 Directions API' : route.source === 'google-distance-matrix' ? 'Google 실시간 경로 API' : route.source === 'estimated' ? '좌표 기반 도로거리 추정' : '주소 기반 지도 연결'}
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <a href={route.naverUrl} target="_blank" rel="noreferrer" className="rounded-xl bg-[#03c75a] px-4 py-2 text-xs font-black text-white">네이버지도</a>
-          <a href={route.kakaoUrl} target="_blank" rel="noreferrer" className="rounded-xl bg-[#fee500] px-4 py-2 text-xs font-black text-slate-900">카카오맵</a>
-          <a href={route.googleUrl} target="_blank" rel="noreferrer" className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black text-white">Google Maps</a>
-        </div>
+        {isDirector ? (
+          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <Metric label="전공" value={candidate.specialty || candidate.user?.specialty || '미입력'} />
+            <Metric label="경력/직함" value={candidate.intro ? String(candidate.intro).slice(0, 18) : candidate.user?.jobTitle || '미입력'} />
+            <Metric label="희망 조건" value={candidate.workMethods || candidate.workTypes || '협의'} />
+          </div>
+        ) : (
+          <>
+            <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+              <Metric label="차량" value={routeLoading ? '계산 중' : route.drivingMinutes ? `${route.drivingMinutes}분` : '지도 확인'} />
+              <Metric label="거리" value={route.distanceKm ? `${route.distanceKm}km` : '주소 기반'} />
+              <Metric label="대중교통" value={route.transitMinutes ? `${route.transitMinutes}분` : '지도 확인'} />
+              <Metric label="도보" value={route.walkingMinutes ? `${route.walkingMinutes}분` : '지도 확인'} />
+            </div>
+            <div className="mt-5 rounded-2xl bg-white p-4 text-sm leading-6 text-slate-700">
+              <strong>경로:</strong> {origin} → {destination}
+            </div>
+          </>
+        )}
+        {route.naverUrl && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <a href={route.naverUrl} target="_blank" rel="noreferrer" className="rounded-xl bg-[#03c75a] px-4 py-2 text-xs font-black text-white">네이버지도 보기</a>
+          </div>
+        )}
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-slate-200 p-4">
           <p className="font-black text-slate-900">추천 이유</p>
           <ul className="mt-3 space-y-2 text-sm text-slate-600">
-            {(match.score?.reasons || []).map((r: string) => <li key={r}>• {r}</li>)}
+            {(detailReasons.length ? detailReasons : ['전공, 희망 조건, 페이 기준으로 검토할 수 있습니다.']).map((r: string) => <li key={r}>• {r}</li>)}
           </ul>
         </div>
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <p className="font-black text-amber-900">확인할 조건</p>
           <ul className="mt-3 space-y-2 text-sm text-amber-800">
-            {(match.score?.warnings || ['면접 전 실제 근무조건과 계약조건을 확인하세요.']).map((r: string) => <li key={r}>• {r}</li>)}
+            {(detailWarnings.length ? detailWarnings : ['면접 전 실제 근무조건과 계약조건을 확인하세요.']).map((r: string) => <li key={r}>• {r}</li>)}
           </ul>
         </div>
       </div>
