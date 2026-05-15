@@ -107,6 +107,12 @@ export default function HospitalDetailPanel({ hospitalId, hospital: initialHospi
         <Info label="주차" value={hospital.parkingCapacity ? `${hospital.parkingCapacity}대 · ${hospital.parkingPaid || ''}` : hospital.parkingNote || '-'} />
       </div>
 
+      {hospital.id && hospital.latitude && hospital.longitude && (
+        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+          <img src={`/api/hospitals/${hospital.id}/map?w=900&h=360`} alt={`${hospital.name} 네이버 지도`} className="h-72 w-full object-cover" />
+        </div>
+      )}
+
       <div className="mt-4 rounded-xl bg-slate-50 p-3 text-xs text-slate-700">
         <strong className="mb-2 block text-slate-900">진료시간</strong>
         월 {formatTime(hospital.mondayStart)}~{formatTime(hospital.mondayEnd)} · 화 {formatTime(hospital.tuesdayStart)}~{formatTime(hospital.tuesdayEnd)} · 수 {formatTime(hospital.wednesdayStart)}~{formatTime(hospital.wednesdayEnd)} · 목 {formatTime(hospital.thursdayStart)}~{formatTime(hospital.thursdayEnd)} · 금 {formatTime(hospital.fridayStart)}~{formatTime(hospital.fridayEnd)} · 토 {formatTime(hospital.saturdayStart)}~{formatTime(hospital.saturdayEnd)} · 일 {formatTime(hospital.sundayStart)}~{formatTime(hospital.sundayEnd)}

@@ -18,8 +18,17 @@ async function getDemoUser() {
   });
 }
 
-export async function GET() {
-  const user = await getDemoUser();
+async function getSessionUser(userId?: string | null) {
+  if (userId) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (user) return user;
+  }
+  return getDemoUser();
+}
+
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const user = await getSessionUser(searchParams.get('userId'));
   
   // Fetch sessions for this user
   const dbConvs = await prisma.conversation.findMany({
@@ -48,16 +57,17 @@ export async function GET() {
   return NextResponse.json({ 
     sessions: formattedSessions,
     user: {
+      id: user.id,
       name: user.name,
-      specialty: user.title,
+      specialty: user.specialty || user.title,
       points: user.points
     } 
   });
 }
 
 export async function POST(req: Request) {
-  const user = await getDemoUser();
-  const { id, title, history } = await req.json();
+  const { id, title, history, userId } = await req.json();
+  const user = await getSessionUser(userId);
 
   // Create or Update Session
   const conv = await prisma.conversation.upsert({
@@ -92,8 +102,8 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const user = await getDemoUser();
   const { searchParams } = new URL(req.url);
+  const user = await getSessionUser(searchParams.get('userId'));
   const sessionId = searchParams.get('sessionId');
   const clearAll = searchParams.get('all') === 'true';
 

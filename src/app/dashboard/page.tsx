@@ -117,7 +117,7 @@ export default function DashboardPage() {
   const [opinionText, setOpinionText] = useState('');
 
   // 유저 컨텍스트
-  const [user, setUser] = useState({ name: '김의사', specialty: '내과', points: 0 });
+  const [user, setUser] = useState({ id: '', name: '김의사', specialty: '내과', points: 0 });
 
   // 채팅 상태
   const [chatInput, setChatInput] = useState('');
@@ -140,15 +140,28 @@ export default function DashboardPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const getSessionStorageKey = (userId?: string) => `medSessions:${userId || 'guest'}`;
+
   useEffect(() => {
+     let storedUser: any = null;
+     try {
+       const rawUser = localStorage.getItem('med_user');
+       storedUser = rawUser ? JSON.parse(rawUser) : null;
+       if (storedUser?.id) {
+         setUser(prev => ({ ...prev, id: storedUser.id, name: storedUser.name || prev.name, specialty: storedUser.specialty || prev.specialty }));
+       }
+     } catch {
+       storedUser = null;
+     }
+     const userKey = getSessionStorageKey(storedUser?.id);
      // 초기 로드 시 로컬 스토리지 데이터 불러오기
-     const localSessions = JSON.parse(localStorage.getItem('medSessions') || '[]');
+     const localSessions = JSON.parse(localStorage.getItem(userKey) || '[]');
      const localLib = JSON.parse(localStorage.getItem('medLibrary') || '[]');
      if (localSessions.length > 0) setSessions(localSessions);
      if (localLib.length > 0) setSavedLibrary(localLib);
 
      // 서버에서 DB 세션 및 유저 정보(포인트 포함) 가져오기 (동기화)
-     fetch('/api/sessions')
+     fetch(`/api/sessions?userId=${encodeURIComponent(storedUser?.id || '')}`)
        .then(r => r.json())
        .then(data => {
          if (data.sessions && data.sessions.length > 0) {
@@ -156,7 +169,7 @@ export default function DashboardPage() {
          }
          // 유저 정보 처리
          if (data.user) {
-           setUser(prev => ({ ...prev, points: data.user.points }));
+           setUser(prev => ({ ...prev, id: data.user.id || prev.id, name: data.user.name || prev.name, specialty: data.user.specialty || prev.specialty, points: data.user.points }));
          }
        }).catch(e => console.error('DB 세션 로드 실패:', e));
   }, []);
@@ -200,7 +213,7 @@ export default function DashboardPage() {
   const deleteSession = async (sessionId: string) => {
     const filteredSessions = sessions.filter((session) => session.id !== sessionId);
     setSessions(filteredSessions);
-    localStorage.setItem('medSessions', JSON.stringify(filteredSessions));
+    localStorage.setItem(getSessionStorageKey(user.id), JSON.stringify(filteredSessions));
 
     if (currentSessionId === sessionId) {
       setMessages([]);
@@ -210,7 +223,7 @@ export default function DashboardPage() {
     }
 
     try {
-      await fetch(`/api/sessions?sessionId=${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+      await fetch(`/api/sessions?sessionId=${encodeURIComponent(sessionId)}&userId=${encodeURIComponent(user.id)}`, { method: 'DELETE' });
     } catch (error) {
       console.error('최근 기록 삭제 실패:', error);
     }
@@ -225,10 +238,10 @@ export default function DashboardPage() {
     setAttachmentBase64(null);
     setAttachmentNotice('');
     setCurrentSessionId(`session_${Date.now()}`);
-    localStorage.setItem('medSessions', '[]');
+    localStorage.setItem(getSessionStorageKey(user.id), '[]');
 
     try {
-      await fetch('/api/sessions?all=true', { method: 'DELETE' });
+      await fetch(`/api/sessions?all=true&userId=${encodeURIComponent(user.id)}`, { method: 'DELETE' });
     } catch (error) {
       console.error('전체 최근 기록 삭제 실패:', error);
     }
@@ -311,13 +324,14 @@ export default function DashboardPage() {
          newSessions.unshift({ id: currentSessionId, title: (targetText ? targetText.slice(0, 30) : "새로운 대화"), history: finalizedHistory, date: new Date().toLocaleDateString() });
       }
       setSessions(newSessions);
-      localStorage.setItem('medSessions', JSON.stringify(newSessions)); // 로컬 캐시 유지
+      localStorage.setItem(getSessionStorageKey(user.id), JSON.stringify(newSessions)); // 로그인 사용자별 로컬 캐시 유지
 
       // DB에 세션 저장 및 역사 동기화
       fetch('/api/sessions', {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
          body: JSON.stringify({
+          userId: user.id,
             id: currentSessionId,
             title: targetText ? targetText.slice(0, 30) : "새로운 대화",
             history: finalizedHistory

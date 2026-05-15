@@ -36,7 +36,7 @@ export async function GET(req: Request) {
     if (!user) return NextResponse.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, { status: 404 });
 
     const profile = await prisma.recruitProfile.findUnique({ where: { userId: user.id } });
-    const isHiringMode = profile?.mode ? profile.mode === 'HIRING' : isHospitalDirector(user);
+    const isHiringMode = isHospitalDirector(user);
     return NextResponse.json({
       success: true,
       user: {
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
     if (!user) return NextResponse.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, { status: 404 });
 
     const director = isHospitalDirector(user);
-    const mode = body.mode === 'HIRING' || body.mode === 'SEEKING' ? body.mode : (director ? 'HIRING' : 'SEEKING');
+    const mode = director ? 'HIRING' : 'SEEKING';
     const locationAddress = body.locationAddress?.trim() || user.address || null;
     const coordinate = await ensureCoordinate({
       address: locationAddress,
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ success: true, profile, isDirector: mode === 'HIRING' });
+    return NextResponse.json({ success: true, profile, isDirector: director });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error?.message || '프로필 저장 실패' }, { status: 500 });
   }

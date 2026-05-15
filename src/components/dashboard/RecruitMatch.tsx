@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import AddressAutocomplete, { AddressSuggestion } from '@/components/hospital/AddressAutocomplete';
 import HospitalAutocomplete, { HospitalSuggestion } from '@/components/hospital/HospitalAutocomplete';
 import HospitalDetailPanel from '@/components/hospital/HospitalDetailPanel';
 
@@ -247,6 +248,24 @@ export default function RecruitMatch() {
     }));
   };
 
+  const applyProfileAddress = (address: AddressSuggestion) => {
+    setProfile((prev) => ({
+      ...prev,
+      locationAddress: address.address,
+      latitude: String(address.latitude),
+      longitude: String(address.longitude),
+    }));
+  };
+
+  const applyPostingAddress = (address: AddressSuggestion) => {
+    setPosting((prev) => ({
+      ...prev,
+      locationAddress: address.address,
+      latitude: String(address.latitude),
+      longitude: String(address.longitude),
+    }));
+  };
+
   const primaryLabel = isDirector ? '구인하기 · AI 후보 매칭' : '구직하기 · AI 병원 매칭';
   const topMatches = useMemo(() => matches.slice(0, 12), [matches]);
 
@@ -284,11 +303,15 @@ export default function RecruitMatch() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[420px_1fr]">
         <div className="space-y-6">
           <Panel title={isDirector ? '매칭용 병원정보 입력하기' : '내 구직 선호조건 입력하기'} subtitle={isDirector ? '병원 주소와 채용 기준을 입력하면 후보 의료진과의 거리·조건 매칭에 사용됩니다.' : '내 기준 위치와 희망 조건을 입력하면 병원 공고와 자동 매칭합니다.'}>
-            <FormInput label={isDirector ? '병원 위치' : '내 기준 위치'} value={profile.locationAddress} onChange={(v) => setProfile({ ...profile, locationAddress: v })} placeholder={isDirector ? '예: 서울 강남구 테헤란로 123' : '예: 서울 강남구 테헤란로'} />
-            <div className="grid grid-cols-2 gap-3">
-              <FormInput label="위도(선택)" value={profile.latitude} onChange={(v) => setProfile({ ...profile, latitude: v })} placeholder="37.5665" />
-              <FormInput label="경도(선택)" value={profile.longitude} onChange={(v) => setProfile({ ...profile, longitude: v })} placeholder="126.9780" />
-            </div>
+            <label className="block">
+              <span className="mb-1 block text-xs font-black text-slate-600">{isDirector ? '병원 위치' : '내 기준 위치'}</span>
+              <AddressAutocomplete
+                value={profile.locationAddress}
+                onChange={(value) => setProfile({ ...profile, locationAddress: value, latitude: '', longitude: '' })}
+                onSelect={applyProfileAddress}
+                placeholder="도로명 또는 지번으로 검색하세요"
+              />
+            </label>
             <FormSelect label="해당과" value={profile.specialty} onChange={(v) => setProfile({ ...profile, specialty: v })} options={specialties} />
             <CheckGroup label={isDirector ? '채용 시간/형태' : '희망 시간/형태'} values={profile.workTypes} options={workTypeOptions} onChange={(v) => setProfile({ ...profile, workTypes: v })} />
             <CheckGroup label={isDirector ? '채용 업무 방식' : '희망 업무 방식'} values={profile.workMethods} options={workMethodOptions} onChange={(v) => setProfile({ ...profile, workMethods: v })} />
@@ -319,11 +342,15 @@ export default function RecruitMatch() {
                 />
                 {posting.hospitalDirectoryId && <p className="mt-1 text-xs font-bold text-emerald-600">공식 병의원 DB와 연결되었습니다.</p>}
               </label>
-              <FormInput label="근무지 주소" value={posting.locationAddress} onChange={(v) => setPosting({ ...posting, locationAddress: v })} />
-              <div className="grid grid-cols-2 gap-3">
-                <FormInput label="위도(선택)" value={posting.latitude} onChange={(v) => setPosting({ ...posting, latitude: v })} />
-                <FormInput label="경도(선택)" value={posting.longitude} onChange={(v) => setPosting({ ...posting, longitude: v })} />
-              </div>
+              <label className="block">
+                <span className="mb-1 block text-xs font-black text-slate-600">근무지 주소</span>
+                <AddressAutocomplete
+                  value={posting.locationAddress}
+                  onChange={(value) => setPosting({ ...posting, locationAddress: value, latitude: '', longitude: '' })}
+                  onSelect={applyPostingAddress}
+                  placeholder="도로명 또는 지번으로 검색하세요"
+                />
+              </label>
               <FormSelect label="해당과" value={posting.specialty} onChange={(v) => setPosting({ ...posting, specialty: v })} options={specialties} />
               <CheckGroup label="근무 시간/형태" values={posting.workTypes} options={workTypeOptions} onChange={(v) => setPosting({ ...posting, workTypes: v })} />
               <CheckGroup label="근무 방법" values={posting.workMethods} options={workMethodOptions} onChange={(v) => setPosting({ ...posting, workMethods: v })} />
