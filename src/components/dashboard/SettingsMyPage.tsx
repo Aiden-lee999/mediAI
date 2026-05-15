@@ -1,16 +1,25 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import HospitalAutocomplete, { HospitalSuggestion } from '@/components/hospital/HospitalAutocomplete';
+import HospitalDetailPanel from '@/components/hospital/HospitalDetailPanel';
 
 export default function SettingsMyPage() {
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(false);
+   const [userId, setUserId] = useState('');
+   const [hospital, setHospital] = useState<any>(null);
+   const [showHospitalDetail, setShowHospitalDetail] = useState(false);
+   const [notice, setNotice] = useState('');
 
   const [profile, setProfile] = useState({
     name: '김의사',
     licenseNumber: '123456',
     specialty: '내과',
     hospitalName: '서울제일의원',
-    email: 'doctor@seouljeil.com'
+      email: 'doctor@seouljeil.com',
+      address: '',
+      institutionNumber: '',
+      hospitalDirectoryId: ''
   });
 
   const [preferences, setPreferences] = useState({
@@ -32,11 +41,74 @@ export default function SettingsMyPage() {
 
   const handleSave = () => {
     setLoading(true);
-    setTimeout(() => {
-       setLoading(false);
-       alert('설정이 성공적으로 저장되었습니다.');
-    }, 600);
+      setNotice('');
+      fetch('/api/user/profile', {
+         method: 'PATCH',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ userId, ...profile }),
+      })
+         .then((res) => res.json())
+         .then((data) => {
+            if (!data.success) throw new Error(data.error || '저장 실패');
+            localStorage.setItem('med_user', JSON.stringify(data.user));
+            setHospital(data.hospital || hospital);
+            setNotice('설정이 성공적으로 저장되었습니다.');
+         })
+         .catch((error) => setNotice(error?.message || '저장 중 오류가 발생했습니다.'))
+         .finally(() => setLoading(false));
   };
+
+   const applyHospitalSelection = (selected: HospitalSuggestion) => {
+      setProfile((prev) => ({
+         ...prev,
+         hospitalName: selected.name,
+         hospitalDirectoryId: selected.id,
+         institutionNumber: selected.encryptedCode,
+         address: selected.address || prev.address,
+      }));
+      setHospital(selected);
+      setShowHospitalDetail(true);
+   };
+
+   useEffect(() => {
+      try {
+         const raw = localStorage.getItem('med_user');
+         const user = raw ? JSON.parse(raw) : null;
+         if (!user?.id) return;
+         setUserId(user.id);
+         setProfile((prev) => ({
+            ...prev,
+            name: user.name || prev.name,
+            licenseNumber: user.license || prev.licenseNumber,
+            specialty: user.specialty || prev.specialty,
+            hospitalName: user.hospitalName || '',
+            email: user.email || '',
+            address: user.address || '',
+            institutionNumber: user.institutionNumber || '',
+            hospitalDirectoryId: user.hospitalDirectoryId || '',
+         }));
+         fetch(`/api/user/profile?userId=${encodeURIComponent(user.id)}`, { cache: 'no-store' })
+            .then((res) => res.json())
+            .then((data) => {
+               if (data?.user) {
+                  setProfile((prev) => ({
+                     ...prev,
+                     name: data.user.name || prev.name,
+                     licenseNumber: data.user.license || prev.licenseNumber,
+                     specialty: data.user.specialty || prev.specialty,
+                     hospitalName: data.user.hospitalName || '',
+                     email: data.user.email || '',
+                     address: data.user.address || '',
+                     institutionNumber: data.user.institutionNumber || '',
+                     hospitalDirectoryId: data.user.hospitalDirectoryId || '',
+                  }));
+               }
+               if (data?.hospital) setHospital(data.hospital);
+            });
+      } catch {
+         // ignore local profile bootstrap errors
+      }
+   }, []);
 
   return (
     <div className="w-full  space-y-6 animate-fadeIn py-2">
@@ -47,6 +119,7 @@ export default function SettingsMyPage() {
                마이페이지 & 환경설정
             </h2>
             <p className="text-slate-500 text-sm">AIMDNET 시스템을 원장님의 진료 환경에 맞게 최적화하세요.</p>
+            {notice && <p className="mt-2 text-xs font-bold text-blue-600">{notice}</p>}
          </div>
          <button 
            onClick={handleSave}
@@ -115,7 +188,13 @@ export default function SettingsMyPage() {
                      </div>
                      <div>
                         <label className="block text-xs font-bold text-slate-500 mb-1">소속 병/의원명</label>
-                        <input className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none" name="hospitalName" value={profile.hospitalName} onChange={handleProfileChange} />
+                        <HospitalAutocomplete
+                          value={profile.hospitalName}
+                          onChange={(value) => setProfile((prev) => ({ ...prev, hospitalName: value, hospitalDirectoryId: '' }))}
+                          onSelect={applyHospitalSelection}
+                          placeholder="병의원명을 입력하면 자동검색됩니다"
+                        />
+                        {profile.hospitalDirectoryId && <p className="mt-1 text-xs font-bold text-emerald-600">공식 병의원 DB와 연결됨</p>}
                      </div>
                   </div>
                   
@@ -123,6 +202,18 @@ export default function SettingsMyPage() {
                      <label className="block text-xs font-bold text-slate-500 mb-1">로그인 이메일</label>
                      <input className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50" name="email" value={profile.email} readOnly />
                   </div>
+                           <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                 <div>
+                                    <p className="text-sm font-black text-blue-900">내 병원 정보</p>
+                                    <p className="mt-1 text-xs text-blue-700">전국 병의원 DB 기준 상세정보와 네이버지도 위치를 확인하고, 변경된 내용은 직접 수정할 수 있습니다.</p>
+                                 </div>
+                                 <button type="button" onClick={() => setShowHospitalDetail((prev) => !prev)} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black text-white">
+                                    {showHospitalDetail ? '닫기' : '내병원 정보 보기'}
+                                 </button>
+                              </div>
+                              {showHospitalDetail && <div className="mt-4"><HospitalDetailPanel hospitalId={profile.hospitalDirectoryId || hospital?.id} hospital={hospital} editable onUpdated={setHospital} /></div>}
+                           </div>
                </div>
             )}
 

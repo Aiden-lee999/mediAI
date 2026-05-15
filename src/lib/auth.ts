@@ -139,6 +139,7 @@ export function publicUser(user: {
   hospitalName?: string | null;
   address?: string | null;
   institutionNumber?: string | null;
+  hospitalDirectoryId?: string | null;
   role: string;
   status: string;
 }) {
@@ -152,6 +153,7 @@ export function publicUser(user: {
     hospitalName: user.hospitalName || '',
     address: user.address || '',
     institutionNumber: user.institutionNumber || '',
+    hospitalDirectoryId: user.hospitalDirectoryId || '',
     role: user.role,
     status: user.status,
   };

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import HospitalAutocomplete, { HospitalSuggestion } from '@/components/hospital/HospitalAutocomplete';
 
 type ModalView = 'terms' | 'form' | 'forgot' | null;
 
@@ -152,6 +153,7 @@ export default function LoginPage() {
   const [hospitalRegion, setHospitalRegion] = useState('');
   const [hospitalAddress, setHospitalAddress] = useState('');
   const [institutionNumber, setInstitutionNumber] = useState('');
+  const [hospitalDirectoryId, setHospitalDirectoryId] = useState('');
   const [specialty, setSpecialty] = useState('내과');
   const [recruitWorkTypes, setRecruitWorkTypes] = useState<string[]>(['풀타임']);
   const [recruitWorkMethods, setRecruitWorkMethods] = useState<string[]>(['상근']);
@@ -197,6 +199,16 @@ export default function LoginPage() {
     localStorage.setItem('med_token', data.token);
     localStorage.setItem('med_user', JSON.stringify(data.user));
     router.push('/dashboard');
+  };
+
+  const applyHospitalSelection = (hospital: HospitalSuggestion) => {
+    setHospitalDirectoryId(hospital.id);
+    setHospitalName(hospital.name || '');
+    setHospitalType(hospital.typeName || hospitalType);
+    setHospitalRegion([hospital.sidoName, hospital.sigunguName].filter(Boolean).join(' '));
+    setHospitalAddress(hospital.address || '');
+    setInstitutionNumber(hospital.encryptedCode || '');
+    if (accountType === 'DIRECTOR' && !address1) setAddress1(hospital.address || '');
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -270,6 +282,7 @@ export default function LoginPage() {
           hospitalRegion,
           hospitalAddress,
           institutionNumber,
+          hospitalDirectoryId,
           specialty,
           recruitProfile: {
             locationAddress: accountType === 'DIRECTOR' ? (hospitalAddress || [address1, address2].filter(Boolean).join(' ')) : [address1, address2].filter(Boolean).join(' '),
@@ -532,7 +545,18 @@ export default function LoginPage() {
                 </div>
               </SignupRow>
               <SignupRow label="직업"><input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} className={`${inputClass} max-w-[300px]`} /></SignupRow>
-              <SignupRow label={accountType === 'DIRECTOR' ? '병원명(선택)' : '현재/최근 병원명(선택)'}><input value={hospitalName} onChange={(e) => setHospitalName(e.target.value)} className={`${inputClass} max-w-[300px]`} placeholder="건너뛰기 가능" /></SignupRow>
+              <SignupRow label={accountType === 'DIRECTOR' ? '병원명(선택)' : '현재/최근 병원명(선택)'}>
+                <div className="max-w-[520px]">
+                  <HospitalAutocomplete
+                    value={hospitalName}
+                    onChange={(value) => { setHospitalName(value); setHospitalDirectoryId(''); }}
+                    onSelect={applyHospitalSelection}
+                    className={inputClass}
+                    placeholder="병의원명을 입력하면 전국 병의원 DB에서 자동검색됩니다"
+                  />
+                  {hospitalDirectoryId && <p className="mt-1 text-xs font-bold text-emerald-600">공식 병의원 DB와 연결되었습니다.</p>}
+                </div>
+              </SignupRow>
               {accountType === 'DIRECTOR' && (
                 <>
                   <SignupRow label="병원 유형(선택)">

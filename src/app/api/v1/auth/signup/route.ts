@@ -26,6 +26,7 @@ export async function POST(req: Request) {
     const hospitalRegion = String(body.hospitalRegion || '').trim();
     const hospitalAddress = String(body.hospitalAddress || '').trim();
     const institutionNumber = String(body.institutionNumber || '').trim();
+    const hospitalDirectoryId = String(body.hospitalDirectoryId || '').trim();
     const recruitProfile = (body.recruitProfile || {}) as Record<string, unknown>;
     const termsAgreed = body.termsAgreed === true;
     const privacyAgreed = body.privacyAgreed === true;
@@ -94,6 +95,7 @@ export async function POST(req: Request) {
         jobTitle: resolvedJobTitle || null,
         hospitalName: hospitalName || null,
         institutionNumber: institutionNumber || null,
+        hospitalDirectoryId: hospitalDirectoryId || null,
         title: resolvedJobTitle || null,
         role,
         status: 'ACTIVE',

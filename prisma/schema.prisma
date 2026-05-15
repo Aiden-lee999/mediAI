@@ -56,6 +56,8 @@ model User {
   passwordResetExpiresAt DateTime?
   hospitalId    String?
   hospital      Hospital?          @relation(fields: [hospitalId], references: [id])
+  hospitalDirectoryId String?
+  hospitalDirectory   HospitalDirectory? @relation(fields: [hospitalDirectoryId], references: [id])
   departmentId  String?
   department    Department?        @relation(fields: [departmentId], references: [id])
   conversations Conversation[]
@@ -71,6 +73,7 @@ model User {
 
   @@index([doctorLicense])
   @@index([status])
+  @@index([hospitalDirectoryId])
 }
 
 model VerifiedDoctorLicense {
@@ -116,6 +119,8 @@ model RecruitPosting {
   id              String   @id @default(uuid())
   ownerId         String
   owner           User     @relation(fields: [ownerId], references: [id])
+  hospitalDirectoryId String?
+  hospitalDirectory   HospitalDirectory? @relation(fields: [hospitalDirectoryId], references: [id])
   hospitalName    String
   title           String
   specialty       String?
@@ -136,6 +141,77 @@ model RecruitPosting {
   @@index([ownerId])
   @@index([status])
   @@index([specialty])
+  @@index([hospitalDirectoryId])
+}
+
+model HospitalDirectory {
+  id              String   @id @default(uuid())
+  encryptedCode   String   @unique
+  name            String
+  typeCode        String?
+  typeName        String?
+  sidoCode        String?
+  sidoName        String?
+  sigunguCode     String?
+  sigunguName     String?
+  eupmyeondong    String?
+  zipCode         String?
+  address         String?
+  phone           String?
+  homepage        String?
+  openDate        String?
+  totalDoctors    Int?
+  generalDoctors  Int?
+  specialists     Int?
+  dentistDoctors  Int?
+  koreanDoctors   Int?
+  midwives        Int?
+  longitude       Float?
+  latitude        Float?
+  landmark        String?
+  direction       String?
+  distance        String?
+  parkingCapacity Int?
+  parkingPaid     String?
+  parkingNote     String?
+  closedSunday    String?
+  closedHoliday   String?
+  erDayAvailable  String?
+  erDayPhone1     String?
+  erDayPhone2     String?
+  erNightAvailable String?
+  erNightPhone1   String?
+  erNightPhone2   String?
+  lunchWeekday    String?
+  lunchSaturday   String?
+  receptionWeekday String?
+  receptionSaturday String?
+  sundayStart     Int?
+  sundayEnd       Int?
+  mondayStart     Int?
+  mondayEnd       Int?
+  tuesdayStart    Int?
+  tuesdayEnd      Int?
+  wednesdayStart  Int?
+  wednesdayEnd    Int?
+  thursdayStart   Int?
+  thursdayEnd     Int?
+  fridayStart     Int?
+  fridayEnd       Int?
+  saturdayStart   Int?
+  saturdayEnd     Int?
+  rawBasic        Json?
+  rawDetail       Json?
+  users           User[]
+  recruitPostings RecruitPosting[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([name])
+  @@index([sidoName])
+  @@index([sigunguName])
+  @@index([typeName])
+  @@index([address])
 }
 
 model UserPreference {

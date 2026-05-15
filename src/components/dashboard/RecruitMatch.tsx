@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import HospitalAutocomplete, { HospitalSuggestion } from '@/components/hospital/HospitalAutocomplete';
+import HospitalDetailPanel from '@/components/hospital/HospitalDetailPanel';
 
 const specialties = ['내과', '외과', '소아청소년과', '산부인과', '정형외과', '피부과', '정신건강의학과', '영상의학과', '응급의학과', '가정의학과', '일반의'];
 const workTypeOptions = ['풀타임', '파트타임', '야간', '주말', '대진', '정기알바'];
@@ -21,6 +23,7 @@ type AppUser = {
   jobTitle?: string;
   role?: string;
   hospitalName?: string;
+  hospitalDirectoryId?: string;
   address?: string;
   license?: string;
 };
@@ -41,6 +44,7 @@ type FormState = {
 };
 
 type PostingForm = {
+  hospitalDirectoryId: string;
   title: string;
   hospitalName: string;
   locationAddress: string;
@@ -72,6 +76,7 @@ const emptyProfile = (user?: Partial<AppUser>): FormState => ({
 });
 
 const emptyPosting = (user?: Partial<AppUser>): PostingForm => ({
+  hospitalDirectoryId: user?.hospitalDirectoryId || '',
   title: `${user?.specialty || '진료과'} 전문의 초빙`,
   hospitalName: user?.hospitalName || '',
   locationAddress: user?.address || '',
@@ -231,6 +236,17 @@ export default function RecruitMatch() {
     }
   };
 
+  const applyPostingHospital = (hospital: HospitalSuggestion) => {
+    setPosting((prev) => ({
+      ...prev,
+      hospitalDirectoryId: hospital.id,
+      hospitalName: hospital.name,
+      locationAddress: hospital.address || prev.locationAddress,
+      latitude: hospital.latitude ? String(hospital.latitude) : prev.latitude,
+      longitude: hospital.longitude ? String(hospital.longitude) : prev.longitude,
+    }));
+  };
+
   const primaryLabel = isDirector ? '구인하기 · AI 후보 매칭' : '구직하기 · AI 병원 매칭';
   const topMatches = useMemo(() => matches.slice(0, 12), [matches]);
 
@@ -292,7 +308,17 @@ export default function RecruitMatch() {
           {isDirector && (
             <Panel title="구인 공고 등록" subtitle="등록된 공고별로 어울리는 후보 의료진을 자동 추천합니다.">
               <FormInput label="공고 제목" value={posting.title} onChange={(v) => setPosting({ ...posting, title: v })} />
-              <FormInput label="병원명" value={posting.hospitalName} onChange={(v) => setPosting({ ...posting, hospitalName: v })} />
+              <label className="block">
+                <span className="mb-1 block text-xs font-black text-slate-600">병원명</span>
+                <HospitalAutocomplete
+                  value={posting.hospitalName}
+                  onChange={(value) => setPosting({ ...posting, hospitalName: value, hospitalDirectoryId: '' })}
+                  onSelect={applyPostingHospital}
+                  placeholder="병의원명을 입력하면 전국 병의원 DB에서 자동검색됩니다"
+                  className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                />
+                {posting.hospitalDirectoryId && <p className="mt-1 text-xs font-bold text-emerald-600">공식 병의원 DB와 연결되었습니다.</p>}
+              </label>
               <FormInput label="근무지 주소" value={posting.locationAddress} onChange={(v) => setPosting({ ...posting, locationAddress: v })} />
               <div className="grid grid-cols-2 gap-3">
                 <FormInput label="위도(선택)" value={posting.latitude} onChange={(v) => setPosting({ ...posting, latitude: v })} />
@@ -526,6 +552,9 @@ function RoutePanel({ match, isDirector }: { match: any; isDirector: boolean }) 
           </ul>
         </div>
       </div>
+      {(posting.hospitalDirectory || posting.hospitalDirectoryId) && (
+        <HospitalDetailPanel hospitalId={posting.hospitalDirectoryId} hospital={posting.hospitalDirectory} />
+      )}
     </Panel>
   );
 }

@@ -23,6 +23,7 @@ export async function POST(req: Request) {
       const postings = await prisma.recruitPosting.findMany({
         where: { ownerId: user.id, status: 'ACTIVE' },
         orderBy: { updatedAt: 'desc' },
+        include: { hospitalDirectory: true },
       });
       const candidates = await prisma.recruitProfile.findMany({
         where: { mode: 'SEEKING', userId: { not: user.id } },
@@ -52,7 +53,10 @@ export async function POST(req: Request) {
 
     const postings = await prisma.recruitPosting.findMany({
       where: { status: 'ACTIVE' },
-      include: { owner: { select: { id: true, name: true, jobTitle: true, hospitalName: true, specialty: true } } },
+      include: {
+        owner: { select: { id: true, name: true, jobTitle: true, hospitalName: true, specialty: true } },
+        hospitalDirectory: true,
+      },
       orderBy: { updatedAt: 'desc' },
       take: 200,
     });

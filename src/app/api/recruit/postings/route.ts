@@ -19,7 +19,10 @@ export async function GET(req: Request) {
       where: ownerId ? { ownerId } : { status: 'ACTIVE' },
       orderBy: { updatedAt: 'desc' },
       take: 100,
-      include: { owner: { select: { name: true, jobTitle: true, hospitalName: true, specialty: true } } },
+      include: {
+        owner: { select: { name: true, jobTitle: true, hospitalName: true, specialty: true } },
+        hospitalDirectory: true,
+      },
     });
     return NextResponse.json({ success: true, postings });
   } catch (error: any) {
@@ -39,18 +42,23 @@ export async function POST(req: Request) {
     }
 
     const locationAddress = String(body.locationAddress || user.address || '').trim();
+    const hospitalDirectoryId = String(body.hospitalDirectoryId || '').trim() || null;
+    const directoryHospital = hospitalDirectoryId
+      ? await prisma.hospitalDirectory.findUnique({ where: { id: hospitalDirectoryId } })
+      : null;
     const coordinate = await ensureCoordinate({
-      address: locationAddress,
-      latitude: body.latitude,
-      longitude: body.longitude,
+      address: directoryHospital?.address || locationAddress,
+      latitude: directoryHospital?.latitude ?? body.latitude,
+      longitude: directoryHospital?.longitude ?? body.longitude,
     });
 
     const data = {
       ownerId: user.id,
-      hospitalName: String(body.hospitalName || user.hospitalName || '').trim(),
+      hospitalDirectoryId,
+      hospitalName: String(directoryHospital?.name || body.hospitalName || user.hospitalName || '').trim(),
       title: String(body.title || '').trim(),
       specialty: String(body.specialty || user.specialty || '').trim() || null,
-      locationAddress,
+      locationAddress: directoryHospital?.address || locationAddress,
       latitude: coordinate?.latitude ?? toNumberOrNull(body.latitude),
       longitude: coordinate?.longitude ?? toNumberOrNull(body.longitude),
       workTypes: toListString(body.workTypes),
