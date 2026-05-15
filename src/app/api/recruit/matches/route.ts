@@ -4,6 +4,8 @@ import { estimateRoute, isHospitalDirector, scoreRecruitMatch } from '@/lib/recr
 
 export const dynamic = 'force-dynamic';
 
+const MIN_VISIBLE_SCORE = 50;
+
 async function findUser(userId?: string, license?: string) {
   if (userId) return prisma.user.findUnique({ where: { id: userId } });
   if (license) return prisma.user.findUnique({ where: { doctorLicense: license } });
@@ -38,16 +40,8 @@ export async function POST(req: Request) {
       const seekerCandidates = candidates.filter((candidate) => !isHospitalDirector(candidate.user));
       const matches = postings.flatMap((posting) => seekerCandidates.map((candidate) => {
         const result = scoreRecruitMatch({ candidate, posting, priority: posting.priority });
-        const route = estimateRoute({
-          originAddress: candidate.locationAddress || '',
-          destinationAddress: posting.locationAddress,
-          originLat: candidate.latitude,
-          originLng: candidate.longitude,
-          destinationLat: posting.latitude,
-          destinationLng: posting.longitude,
-        });
-        return { type: 'candidate', posting, candidate, score: result, route };
-      })).filter((match) => match.score.score >= 40).sort((a, b) => b.score.score - a.score.score).slice(0, 30);
+        return { type: 'candidate', posting, candidate, score: result, route: null };
+      })).filter((match) => match.score.score > MIN_VISIBLE_SCORE).sort((a, b) => b.score.score - a.score.score).slice(0, 30);
 
       return NextResponse.json({ success: true, mode: 'HIRING', isDirector: true, profile, matches });
     }
@@ -66,8 +60,13 @@ export async function POST(req: Request) {
       take: 200,
     });
 
-    const matches = postings.map((posting) => {
+    const scoredMatches = postings.map((posting) => {
       const result = scoreRecruitMatch({ candidate: profile, posting, priority: profile.priority });
+      return { type: 'posting', posting, score: result };
+    }).filter((match) => match.score.score > MIN_VISIBLE_SCORE).sort((a, b) => b.score.score - a.score.score).slice(0, 30);
+
+    const matches = scoredMatches.map((match) => {
+      const posting = match.posting;
       const route = estimateRoute({
         originAddress: profile.locationAddress || '',
         destinationAddress: posting.locationAddress,
@@ -76,8 +75,8 @@ export async function POST(req: Request) {
         destinationLat: posting.latitude,
         destinationLng: posting.longitude,
       });
-      return { type: 'posting', posting, score: result, route };
-    }).filter((match) => match.score.score >= 40).sort((a, b) => b.score.score - a.score.score).slice(0, 30);
+      return { ...match, route };
+    });
 
     return NextResponse.json({ success: true, mode: 'SEEKING', isDirector: false, profile, matches });
   } catch (error: any) {
