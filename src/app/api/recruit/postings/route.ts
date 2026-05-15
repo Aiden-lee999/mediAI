@@ -32,7 +32,9 @@ export async function POST(req: Request) {
     const body = await req.json();
     const user = await findUser(body.userId, body.license);
     if (!user) return NextResponse.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, { status: 404 });
-    if (!isHospitalDirector(user)) {
+    const profile = await prisma.recruitProfile.findUnique({ where: { userId: user.id } });
+    const canPostHiring = profile?.mode ? profile.mode === 'HIRING' : isHospitalDirector(user);
+    if (!canPostHiring) {
       return NextResponse.json({ success: false, error: '구인 공고 등록은 병원 원장/관리자 계정에서만 가능합니다.' }, { status: 403 });
     }
 

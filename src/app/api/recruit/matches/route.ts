@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     if (!user) return NextResponse.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, { status: 404 });
 
     const profile = await prisma.recruitProfile.findUnique({ where: { userId: user.id } });
-    const director = isHospitalDirector(user);
+    const director = profile?.mode ? profile.mode === 'HIRING' : isHospitalDirector(user);
 
     if (director) {
       const postings = await prisma.recruitPosting.findMany({
