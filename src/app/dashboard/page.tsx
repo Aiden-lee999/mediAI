@@ -483,6 +483,63 @@ export default function DashboardPage() {
             <SortableDrugTable initialDrugs={meta_json?.drugs || []} />
           </div>
         );
+      case 'prescription_options':
+        return (
+          <div key={index} className="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
+            <h3 className="mb-2 text-sm font-bold text-blue-900">{title || '추천 처방 옵션'}</h3>
+            {body && <div className="mb-3 text-sm text-blue-900" dangerouslySetInnerHTML={{ __html: body.replace(/\n/g, '<br/>') }} />}
+            <div className="space-y-3">
+              {(meta_json?.prescriptions || []).map((rx: any, rxIndex: number) => (
+                <div key={rxIndex} className="rounded-lg border border-blue-100 bg-white p-3">
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                    <strong className="text-sm text-blue-800">{rx.label || `추천 ${rxIndex + 1}`}</strong>
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                      총 약가 {rx.totalDrugCost || rx.total || '확인 필요'}
+                    </span>
+                  </div>
+                  {rx.indication && <div className="mb-2 text-xs text-slate-600">상정 상황: {rx.indication}</div>}
+                  <div className="overflow-hidden rounded border border-slate-200">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100 text-slate-600">
+                        <tr>
+                          <th className="p-2">약제</th>
+                          <th className="p-2">용법/일수</th>
+                          <th className="p-2">약가</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(rx.drugs || []).map((drug: any, drugIndex: number) => (
+                          <tr key={drugIndex} className="border-t border-slate-100">
+                            <td className="p-2">
+                              <div className="font-bold text-slate-800">{drug.name || drug.productName || '약품명 확인 필요'}</div>
+                              <div className="text-[11px] text-slate-500">{drug.ingredient || ''}</div>
+                            </td>
+                            <td className="p-2 text-slate-600">{drug.dose || drug.days || rx.assumptions || '용법 확인 필요'}</td>
+                            <td className="p-2 text-slate-700">
+                              {drug.estimatedCost || drug.price || drug.unitPrice || '확인 필요'}
+                              {drug.reimbursement && <div className="text-[11px] text-slate-400">{drug.reimbursement}</div>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {rx.insuranceFeeEstimate && <div className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-800">보험/수가: {rx.insuranceFeeEstimate}</div>}
+                  {rx.cautions && <div className="mt-2 text-xs text-red-700">주의: {rx.cautions}</div>}
+                  {rx.assumptions && <div className="mt-1 text-[11px] text-slate-500">가정: {rx.assumptions}</div>}
+                </div>
+              ))}
+            </div>
+            {meta_json?.follow_up_questions?.length > 0 && (
+              <div className="mt-3 rounded-lg bg-white p-3 text-xs text-slate-700">
+                <strong className="mb-1 block text-slate-900">추가로 확인할 질문</strong>
+                <ul className="list-disc space-y-1 pl-4">
+                  {meta_json.follow_up_questions.map((question: string, questionIndex: number) => <li key={questionIndex}>{question}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+        );
       case 'translation':
           return (
             <div key={index} className="bg-indigo-50 border border-indigo-200 p-4 rounded-lg mb-3 shadow-sm">
