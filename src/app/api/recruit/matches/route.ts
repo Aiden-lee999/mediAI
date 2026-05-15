@@ -26,12 +26,17 @@ export async function POST(req: Request) {
         include: { hospitalDirectory: true },
       });
       const candidates = await prisma.recruitProfile.findMany({
-        where: { mode: 'SEEKING', userId: { not: user.id } },
-        include: { user: { select: { id: true, name: true, specialty: true, jobTitle: true, hospitalName: true } } },
+        where: {
+          mode: 'SEEKING',
+          userId: { not: user.id },
+          user: { role: { not: 'HOSPITAL_DIRECTOR' } },
+        },
+        include: { user: { select: { id: true, name: true, specialty: true, jobTitle: true, hospitalName: true, role: true } } },
         take: 200,
       });
 
-      const matches = postings.flatMap((posting) => candidates.map((candidate) => {
+      const seekerCandidates = candidates.filter((candidate) => !isHospitalDirector(candidate.user));
+      const matches = postings.flatMap((posting) => seekerCandidates.map((candidate) => {
         const result = scoreRecruitMatch({ candidate, posting, priority: posting.priority });
         const route = estimateRoute({
           originAddress: candidate.locationAddress || '',
