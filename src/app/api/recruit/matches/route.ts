@@ -47,7 +47,7 @@ export async function POST(req: Request) {
           destinationLng: posting.longitude,
         });
         return { type: 'candidate', posting, candidate, score: result, route };
-      })).sort((a, b) => b.score.score - a.score.score).slice(0, 30);
+      })).filter((match) => match.score.score >= 40).sort((a, b) => b.score.score - a.score.score).slice(0, 30);
 
       return NextResponse.json({ success: true, mode: 'HIRING', isDirector: true, profile, matches });
     }
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
         destinationLng: posting.longitude,
       });
       return { type: 'posting', posting, score: result, route };
-    }).sort((a, b) => b.score.score - a.score.score).slice(0, 30);
+    }).filter((match) => match.score.score >= 40).sort((a, b) => b.score.score - a.score.score).slice(0, 30);
 
     return NextResponse.json({ success: true, mode: 'SEEKING', isDirector: false, profile, matches });
   } catch (error: any) {
