@@ -144,6 +144,25 @@ async function buildPrescriptionContext(question: string, history: any[] | undef
 ${JSON.stringify(plans, null, 2)}`;
 }
 
+function normalizeHistoryMessage(item: any) {
+  const role = item?.role === 'assistant' ? 'assistant' : item?.role === 'user' ? 'user' : null;
+  if (!role) return null;
+
+  const parsed = item?.parsedData;
+  const blockText = Array.isArray(parsed?.blocks)
+    ? parsed.blocks
+        .map((block: any) => [block?.title, block?.body].filter(Boolean).join('\n'))
+        .filter(Boolean)
+        .join('\n\n')
+    : '';
+  const content = [item?.content, parsed?.chat_reply, blockText]
+    .filter((value) => typeof value === 'string' && value.trim())
+    .join('\n\n')
+    .trim();
+
+  return content ? { role, content } : null;
+}
+
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
@@ -251,9 +270,8 @@ export async function POST(req: Request) {
 
     if (history && Array.isArray(history)) {
       history.forEach((h: any) => {
-         if(h.content && typeof h.content === 'string') {
-            messages.push({ role: h.role, content: h.content });
-         }
+        const normalized = normalizeHistoryMessage(h);
+        if (normalized) messages.push(normalized);
       });
     }
 

@@ -107,6 +107,26 @@ function convertImageFileToJpegDataUrl(file: File, maxSide = 1600, quality = 0.8
   });
 }
 
+function messageToApiHistory(message: any) {
+  if (message?.role === 'user') {
+    const content = typeof message.content === 'string' ? message.content : '';
+    return content.trim() ? { role: 'user', content } : null;
+  }
+
+  const parsed = message?.parsedData;
+  const blockText = Array.isArray(parsed?.blocks)
+    ? parsed.blocks
+        .map((block: any) => [block?.title, block?.body].filter(Boolean).join('\n'))
+        .filter(Boolean)
+        .join('\n\n')
+    : '';
+  const content = [parsed?.chat_reply, blockText, message?.content]
+    .filter((value) => typeof value === 'string' && value.trim())
+    .join('\n\n');
+
+  return content.trim() ? { role: 'assistant', content } : null;
+}
+
 // ==========================================
 // 2. 메인 대시보드 페이지
 // ==========================================
@@ -294,11 +314,9 @@ export default function DashboardPage() {
     setIsThinking(true);
 
     try {
-      const apiHistory = messages.map(m => {
-        // preserve context if it's the latest
-        return { role: m.role, content: m.content };
-      });
-      apiHistory.push(userMsg); // Push the prefix-injected message to API only
+      const apiHistory = messages
+        .map(messageToApiHistory)
+        .filter(Boolean);
 
       const res = await fetch('/api/ask', {
         method: 'POST',
@@ -307,7 +325,7 @@ export default function DashboardPage() {
       });
       const data = await res.json();
       
-      const assistantMsg = { role: 'assistant', parsedData: data };
+      const assistantMsg = { role: 'assistant', content: data.chat_reply || '', parsedData: data };
       const finalizedHistory = [...newHistory, assistantMsg];
       setMessages(finalizedHistory);
 
