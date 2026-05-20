@@ -146,3 +146,28 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: error?.message || '학습 피드백 조회 실패' }, { status: 500 });
   }
 }
+
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json();
+    const id = trimText(body.id, 120);
+    const status = String(body.status || '').toUpperCase();
+    if (!id) return NextResponse.json({ success: false, error: 'id가 필요합니다.' }, { status: 400 });
+    if (!['RAW', 'APPROVED', 'REJECTED', 'EXPORTED'].includes(status)) {
+      return NextResponse.json({ success: false, error: 'status는 RAW, APPROVED, REJECTED, EXPORTED 중 하나여야 합니다.' }, { status: 400 });
+    }
+
+    const updated = await prisma.aiTrainingExample.update({
+      where: { id },
+      data: {
+        status,
+        comment: typeof body.comment === 'string' ? trimText(body.comment, MAX_COMMENT) : undefined,
+      },
+      select: { id: true, status: true, comment: true, updatedAt: true },
+    });
+
+    return NextResponse.json({ success: true, example: updated });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error?.message || '학습 피드백 검수 상태 변경 실패' }, { status: 500 });
+  }
+}

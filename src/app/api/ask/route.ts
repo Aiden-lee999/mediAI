@@ -10,11 +10,13 @@ const openai = new OpenAI({
 const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-5.5';
 const OPENAI_STANDARD_MODEL = process.env.OPENAI_STANDARD_MODEL || 'gpt-5.5';
 const OPENAI_FAST_MODEL = process.env.OPENAI_FAST_MODEL || 'gpt-5.4-mini';
+const AIMDNET_FINE_TUNED_MODEL = process.env.AIMDNET_FINE_TUNED_MODEL || '';
 const CHAT_MEMORY_KEY = 'chat_memory_summary';
 const MAX_CHAT_MEMORY_CHARS = 2800;
 
 function determineModel(question: string, hasImage: boolean) {
   if (hasImage) return OPENAI_IMAGE_MODEL;
+  if (AIMDNET_FINE_TUNED_MODEL) return AIMDNET_FINE_TUNED_MODEL;
   if (!question || question.length < 50) return OPENAI_FAST_MODEL;
   return OPENAI_STANDARD_MODEL;
 }
