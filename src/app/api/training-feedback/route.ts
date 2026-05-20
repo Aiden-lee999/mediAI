@@ -106,12 +106,16 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const userId = url.searchParams.get('userId') || undefined;
+    const status = (url.searchParams.get('status') || '').toUpperCase();
+    const rating = (url.searchParams.get('rating') || '').toUpperCase();
     const format = (url.searchParams.get('format') || 'json').toLowerCase();
     const limit = Math.min(Number(url.searchParams.get('limit') || 50) || 50, 200);
     const exportOnly = format === 'jsonl';
     const examples = await prisma.aiTrainingExample.findMany({
       where: {
         ...(userId ? { userId } : {}),
+        ...(status && status !== 'ALL' ? { status } : {}),
+        ...(rating && rating !== 'ALL' ? { rating } : {}),
         ...(exportOnly ? { rating: { in: ['LIKE', 'COMMENT', 'CORRECTION'] }, status: { not: 'REJECTED' } } : {}),
       },
       orderBy: { createdAt: 'desc' },
@@ -119,14 +123,18 @@ export async function GET(req: Request) {
       select: {
         id: true,
         userId: true,
+        user: { select: { name: true, specialty: true, doctorLicense: true } },
         sessionId: true,
         rating: true,
         source: true,
         prompt: true,
         response: true,
+        responseJson: true,
+        history: true,
         comment: true,
         status: true,
         createdAt: true,
+        updatedAt: true,
       },
     });
     if (format === 'jsonl') {
@@ -161,9 +169,11 @@ export async function PATCH(req: Request) {
       where: { id },
       data: {
         status,
+        prompt: typeof body.prompt === 'string' ? trimText(body.prompt, MAX_PROMPT) : undefined,
+        response: typeof body.response === 'string' ? trimText(body.response, MAX_RESPONSE) : undefined,
         comment: typeof body.comment === 'string' ? trimText(body.comment, MAX_COMMENT) : undefined,
       },
-      select: { id: true, status: true, comment: true, updatedAt: true },
+      select: { id: true, status: true, prompt: true, response: true, comment: true, updatedAt: true },
     });
 
     return NextResponse.json({ success: true, example: updated });

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import ReviewManager from "./ReviewManager";
+import TrainingDataManager from "./TrainingDataManager";
 
 export default function AdminPage() {
   return (
@@ -7,8 +8,8 @@ export default function AdminPage() {
       <header className="w-full bg-blue-800 text-white p-6 shadow-sm">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <h1 className="text-2xl font-black">
-+            ⚙️ AIMDNET 고급 관리자 플랫폼 (Phase 2 & 3)
-+          </h1>
+            ⚙️ AIMDNET 고급 관리자 플랫폼 (Phase 2 & 3)
+          </h1>
           <nav className="space-x-6 text-sm font-semibold">
             <Link href="/chat" className="hover:text-blue-200">
               챗봇 에이전트
@@ -19,6 +20,9 @@ export default function AdminPage() {
             </Link>
             <Link href="#workflow" className="hover:text-blue-200">
               리뷰어 검수
+            </Link>
+            <Link href="#training" className="hover:text-blue-200">
+              AI 학습 데이터
             </Link>
             <Link href="#permissions" className="hover:text-blue-200">
               권한 관리
@@ -109,7 +113,23 @@ export default function AdminPage() {
           <ReviewManager />
         </section>
 
-        {/* 3. 권한 세분화 & 병원별 지식베이스/외부 데이터 연동 */}
+        {/* 3. AI 학습 데이터 검수 */}
+        <section
+          id="training"
+          className="p-8 bg-white rounded-xl shadow-sm border border-gray-200"
+        >
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              🧠 AI 학습 데이터 검수
+              <span className="text-xs font-normal bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                Fine-tuning
+              </span>
+            </h2>
+          </div>
+          <TrainingDataManager />
+        </section>
+
+        {/* 4. 권한 세분화 & 병원별 지식베이스/외부 데이터 연동 */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div
             id="permissions"
