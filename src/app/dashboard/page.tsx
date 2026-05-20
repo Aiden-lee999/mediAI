@@ -321,7 +321,7 @@ export default function DashboardPage() {
       const res = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: contextualText, history: apiHistory, imageBase64: userMsg.image })
+        body: JSON.stringify({ userId: user.id, question: contextualText, history: apiHistory, imageBase64: userMsg.image })
       });
       const data = await res.json();
       

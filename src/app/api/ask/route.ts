@@ -10,6 +10,8 @@ const openai = new OpenAI({
 const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-5.5';
 const OPENAI_STANDARD_MODEL = process.env.OPENAI_STANDARD_MODEL || 'gpt-5.5';
 const OPENAI_FAST_MODEL = process.env.OPENAI_FAST_MODEL || 'gpt-5.4-mini';
+const CHAT_MEMORY_KEY = 'chat_memory_summary';
+const MAX_CHAT_MEMORY_CHARS = 2800;
 
 function determineModel(question: string, hasImage: boolean) {
   if (hasImage) return OPENAI_IMAGE_MODEL;
@@ -163,14 +165,59 @@ function normalizeHistoryMessage(item: any) {
   return content ? { role, content } : null;
 }
 
+function compactText(value: unknown, max = 320) {
+  return String(value || '')
+    .replace(/data:image\/[a-zA-Z]+;base64,[A-Za-z0-9+/=]+/g, '[이미지]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+async function getChatMemory(userId?: string) {
+  if (!userId) return '';
+  const pref = await prisma.userPreference.findUnique({
+    where: { userId_key: { userId, key: CHAT_MEMORY_KEY } },
+    select: { value: true },
+  }).catch(() => null);
+  return pref?.value || '';
+}
+
+async function saveChatMemory(userId: string | undefined, memory: string) {
+  if (!userId || !memory.trim()) return;
+  await prisma.userPreference.upsert({
+    where: { userId_key: { userId, key: CHAT_MEMORY_KEY } },
+    update: { value: memory },
+    create: { userId, key: CHAT_MEMORY_KEY, value: memory },
+  }).catch((error) => console.error('채팅 메모리 저장 실패:', error));
+}
+
+function buildUpdatedChatMemory(previousMemory: string, question: string, parsedResponse: any) {
+  const q = compactText(question, 260);
+  const reply = compactText(parsedResponse?.chat_reply, 360);
+  const topic = compactText(parsedResponse?.orchestration_summary || parsedResponse?.intent_type || '일반 대화', 120);
+  if (!q && !reply) return previousMemory || '';
+
+  const lines = String(previousMemory || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.includes(q.slice(0, 80)));
+
+  lines.push(`- ${new Date().toISOString().slice(0, 10)} · ${topic}: 사용자 질문 "${q}" / 답변 핵심 "${reply}"`);
+  let next = lines.slice(-18).join('\n');
+  if (next.length > MAX_CHAT_MEMORY_CHARS) next = next.slice(next.length - MAX_CHAT_MEMORY_CHARS);
+  return next;
+}
+
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { question, history, imageBase64 } = body;
+    const { question, history, imageBase64, userId } = body;
     const modelToUse = determineModel(question || '', !!imageBase64);
+    const chatMemory = await getChatMemory(userId);
 
     let ragContext = "";
     if (question && question.length >= 2) {
@@ -218,7 +265,8 @@ export async function POST(req: Request) {
     const messages: any[] = [];
     messages.push({
       role: 'system',
-      content: `당신은 뛰어난 전문 의학 어시스턴트입니다. 아래에 [사전 제공된 지식베이스 RAG 정보] 또는 [처방 추천/약가 계산 보조 데이터]가 있다면 반드시 이를 최우선으로 참고하여 답변의 <채팅내용>과 <blocks>에 활용해야 합니다.\n${ragContext}\n${prescriptionContext}\n
+      content: `당신은 뛰어난 전문 의학 어시스턴트입니다. 아래에 [사용자 장기 대화 메모리], [사전 제공된 지식베이스 RAG 정보] 또는 [처방 추천/약가 계산 보조 데이터]가 있다면 반드시 이를 최우선으로 참고하여 답변의 <채팅내용>과 <blocks>에 활용해야 합니다.
+    ${chatMemory ? `[사용자 장기 대화 메모리]\n${chatMemory}\n` : ''}${ragContext}\n${prescriptionContext}\n
 반드시 아래의 JSON 포맷으로만 응답해주세요. 프론트엔드의 블록 UI를 렌더링하기 위한 필수 규격입니다:
 {
   "intent_type": "general|disease|drug|image|recruit|translation",
@@ -295,6 +343,7 @@ export async function POST(req: Request) {
 
     const replyContent = completion.choices[0].message.content;
     const parsedResponse = JSON.parse(replyContent || '{}');
+    await saveChatMemory(userId, buildUpdatedChatMemory(chatMemory, question || '', parsedResponse));
 
     return NextResponse.json(parsedResponse);
   } catch (error: any) {
