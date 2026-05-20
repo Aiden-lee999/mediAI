@@ -135,6 +135,7 @@ export default function DashboardPage() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isOpinionModalOpen, setOpinionModalOpen] = useState(false);
   const [opinionText, setOpinionText] = useState('');
+  const [feedbackTarget, setFeedbackTarget] = useState<{ msg: any; index: number } | null>(null);
 
   // 유저 컨텍스트
   const [user, setUser] = useState({ id: '', name: '김의사', specialty: '내과', points: 0 });
@@ -228,6 +229,43 @@ export default function DashboardPage() {
     setCurrentSessionId(sessionData.id);
     setMessages(sessionData.history || []);
     if(window.innerWidth < 768) setSidebarOpen(false);
+  };
+
+  const findPromptForAssistant = (assistantIndex: number) => {
+    for (let i = assistantIndex - 1; i >= 0; i -= 1) {
+      if (messages[i]?.role === 'user') return messages[i]?.content || '';
+    }
+    return '';
+  };
+
+  const compactTrainingHistory = (untilIndex: number) => messages.slice(0, untilIndex + 1).map((item) => ({
+    role: item.role,
+    content: item.role === 'assistant' ? (item.parsedData?.chat_reply || item.content || '') : (item.content || ''),
+    hasImage: Boolean(item.image),
+  }));
+
+  const submitTrainingFeedback = async (rating: 'LIKE' | 'DISLIKE' | 'COMMENT', msg: any, index: number, comment = '') => {
+    const responseText = msg?.parsedData?.chat_reply || msg?.content || '';
+    const prompt = findPromptForAssistant(index);
+    const res = await fetch('/api/training-feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: user.id,
+        sessionId: currentSessionId,
+        source: 'DASHBOARD_CHAT',
+        rating,
+        prompt,
+        response: responseText,
+        responseJson: msg?.parsedData || null,
+        history: compactTrainingHistory(index),
+        comment,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || '학습 피드백 저장 실패');
+    if (typeof data.updatedPoints === 'number') setUser(prev => ({ ...prev, points: data.updatedPoints }));
+    return data;
   };
 
   const deleteSession = async (sessionId: string) => {
@@ -460,7 +498,7 @@ export default function DashboardPage() {
                    <div className="text-sm text-slate-600">{op.content}</div>
                 </div>
              ))}
-             <button onClick={() => setOpinionModalOpen(true)} className="w-full border border-dashed border-slate-400 bg-transparent py-2 rounded text-slate-500 text-sm hover:bg-slate-100">+</button>
+             <button onClick={() => { setFeedbackTarget(null); setOpinionModalOpen(true); }} className="w-full border border-dashed border-slate-400 bg-transparent py-2 rounded text-slate-500 text-sm hover:bg-slate-100">+</button>
           </div>
         );
       case 'insurance_warning':
@@ -770,9 +808,9 @@ export default function DashboardPage() {
                                    <button className="px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-full hover:bg-slate-50 bg-white" onClick={() => alert('클립보드에 복사되었습니다.')}>복사</button>
                                    <button className="px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-full hover:bg-slate-50 bg-white" onClick={handleSaveToLibrary}>저장</button>
                                    <div className="flex-1"></div>
-                                   <button className="px-3 py-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-full hover:bg-green-100" onClick={(e) => { e.currentTarget.innerText=' 완료' }}> 좋아요</button>
-                                   <button className="px-3 py-1.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-full hover:bg-red-100" onClick={(e) => { e.currentTarget.innerText=' 반영됨' }}> 싫어요</button>
-                                   <button className="px-3 py-1.5 text-xs text-white bg-blue-600 rounded-full hover:bg-blue-700 font-bold shadow-sm" onClick={() => setOpinionModalOpen(true)}>의견 남기기</button>
+                                   <button className="px-3 py-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-full hover:bg-green-100" onClick={async (e) => { try { await submitTrainingFeedback('LIKE', msg, idx); e.currentTarget.innerText=' 학습 반영'; } catch { alert('피드백 저장에 실패했습니다.'); } }}> 좋아요</button>
+                                   <button className="px-3 py-1.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-full hover:bg-red-100" onClick={async (e) => { try { await submitTrainingFeedback('DISLIKE', msg, idx); e.currentTarget.innerText=' 개선 데이터 반영'; } catch { alert('피드백 저장에 실패했습니다.'); } }}> 싫어요</button>
+                                   <button className="px-3 py-1.5 text-xs text-white bg-blue-600 rounded-full hover:bg-blue-700 font-bold shadow-sm" onClick={() => { setFeedbackTarget({ msg, index: idx }); setOpinionModalOpen(true); }}>의견 남기기</button>
                                 </div>
                               </div>
                             )}
@@ -877,7 +915,7 @@ export default function DashboardPage() {
            <div className="bg-white w-full w-full rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in duration-200">
               <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
                  <h3 className="font-bold text-slate-800 text-md"> 동료 의견 남기기</h3>
-                 <button onClick={() => setOpinionModalOpen(false)} className="text-slate-400 hover:text-slate-600"></button>
+                 <button onClick={() => { setOpinionModalOpen(false); setFeedbackTarget(null); }} className="text-slate-400 hover:text-slate-600"></button>
               </div>
               <div className="p-5">
                  <p className="text-xs text-slate-500 mb-3">작성하신 의견은 가명(전공의/전문의) 처리되어 다른 원장님들의 인텔리전스 분석 시 참고 데이터로 활용됩니다.</p>
@@ -889,14 +927,17 @@ export default function DashboardPage() {
                  />
               </div>
               <div className="p-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
-                 <button onClick={() => setOpinionModalOpen(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded">취소</button>
+                 <button onClick={() => { setOpinionModalOpen(false); setFeedbackTarget(null); }} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded">취소</button>
                  <button onClick={async () => { 
                     if (!opinionText.trim()) return alert('의견을 입력해주세요.');
                     try {
+                      if (feedbackTarget) {
+                        await submitTrainingFeedback('COMMENT', feedbackTarget.msg, feedbackTarget.index, opinionText);
+                      }
                       const res = await fetch('/api/opinions', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ sessionId: currentSessionId, content: opinionText })
+                        body: JSON.stringify({ userId: user.id, sessionId: currentSessionId, content: opinionText })
                       });
                       const data = await res.json();
                       if (data.success) {
@@ -909,6 +950,7 @@ export default function DashboardPage() {
                       alert('의견 등록 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
                     }
                     setOpinionModalOpen(false); 
+                    setFeedbackTarget(null);
                     setOpinionText(''); 
                  }} className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded font-bold">의견 등록</button>
               </div>

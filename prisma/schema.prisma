@@ -66,6 +66,7 @@ model User {
   bookmarks     Bookmark[]
   reviews       ReviewWorkflow[]   @relation("Reviewer")
   preferences   UserPreference[]
+  trainingExamples AiTrainingExample[]
   recruitProfile RecruitProfile?
   recruitPostings RecruitPosting[]
   createdAt     DateTime           @default(now())
@@ -225,6 +226,28 @@ model UserPreference {
 
   @@unique([userId, key])
   @@index([key])
+}
+
+model AiTrainingExample {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  sessionId    String?
+  source       String   @default("CHAT_FEEDBACK")
+  rating       String
+  prompt       String
+  response     String
+  responseJson Json?
+  history      Json?
+  comment      String?
+  status       String   @default("RAW")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([rating])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model Conversation {
