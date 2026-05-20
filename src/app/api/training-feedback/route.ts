@@ -7,6 +7,7 @@ const MAX_PROMPT = 6000;
 const MAX_RESPONSE = 12000;
 const MAX_COMMENT = 3000;
 const MAX_HISTORY_ITEMS = 30;
+const TRAINING_SYSTEM_PROMPT = '당신은 AIMDNET의 전문 의학 보조 AI입니다. 한국어로 간결하고 임상적으로 안전하게 답하며, 약품·병원·보험·구인구직 데이터가 주어지면 이를 우선 근거로 사용합니다.';
 
 function trimText(value: unknown, max: number) {
   return String(value || '')
@@ -40,6 +41,22 @@ function sanitizeHistory(history: unknown) {
     content: trimText(item?.content || item?.parsedData?.chat_reply || '', 1200),
     hasImage: Boolean(item?.image),
   })).filter((item) => item.content || item.hasImage);
+}
+
+function isExportable(example: { rating: string; prompt: string | null; response: string | null; status: string }) {
+  if (example.status === 'REJECTED') return false;
+  if (!example.prompt?.trim() || !example.response?.trim()) return false;
+  return ['LIKE', 'COMMENT', 'CORRECTION'].includes(example.rating);
+}
+
+function toFineTuneJsonl(example: { prompt: string; response: string }) {
+  return JSON.stringify({
+    messages: [
+      { role: 'system', content: TRAINING_SYSTEM_PROMPT },
+      { role: 'user', content: example.prompt },
+      { role: 'assistant', content: example.response },
+    ],
+  });
 }
 
 export async function POST(req: Request) {
@@ -89,9 +106,14 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const userId = url.searchParams.get('userId') || undefined;
+    const format = (url.searchParams.get('format') || 'json').toLowerCase();
     const limit = Math.min(Number(url.searchParams.get('limit') || 50) || 50, 200);
+    const exportOnly = format === 'jsonl';
     const examples = await prisma.aiTrainingExample.findMany({
-      where: userId ? { userId } : undefined,
+      where: {
+        ...(userId ? { userId } : {}),
+        ...(exportOnly ? { rating: { in: ['LIKE', 'COMMENT', 'CORRECTION'] }, status: { not: 'REJECTED' } } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
@@ -107,6 +129,18 @@ export async function GET(req: Request) {
         createdAt: true,
       },
     });
+    if (format === 'jsonl') {
+      const jsonl = examples
+        .filter(isExportable)
+        .map((example: { prompt: string; response: string }) => toFineTuneJsonl({ prompt: example.prompt, response: example.response }))
+        .join('\n');
+      return new Response(jsonl ? `${jsonl}\n` : '', {
+        headers: {
+          'Content-Type': 'application/x-ndjson; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="aimdnet-training.jsonl"',
+        },
+      });
+    }
     return NextResponse.json({ success: true, examples });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error?.message || '학습 피드백 조회 실패' }, { status: 500 });

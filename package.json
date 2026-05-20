@@ -17,7 +17,8 @@
     "data:backfill-nedrug-images": "npx --yes tsx scripts/backfill_nedrug_images.ts",
     "data:verify-no-blank": "npx --yes tsx scripts/verify_no_blank_core_fields.ts",
     "data:restore-real-from-source": "npx --yes tsx scripts/restore_real_fields_from_source.ts --limit=50000",
-    "data:import-hospitals": "node scripts/import_hospital_directory.mjs"
+    "data:import-hospitals": "node scripts/import_hospital_directory.mjs",
+    "ai:export-training": "node scripts/export_ai_training_dataset.mjs --include-raw=true"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
