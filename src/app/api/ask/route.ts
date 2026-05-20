@@ -65,6 +65,8 @@ const RX_TEMPLATES: RxTemplate[] = [
   },
 ];
 
+const HOSPITAL_QUERY_HINT = /병원|의원|요양기관|의료기관|구인|구직|채용|근무|위치|주소|지도|진료시간|주차|응급|야간|전화|원장|의사|매칭/i;
+
 async function pickPricedDrug(keyword: string) {
   const rows = await prisma.drug.findMany({
     where: {
@@ -96,6 +98,61 @@ async function pickPricedDrug(keyword: string) {
     }))
     .filter((row) => row.unitPrice && !String(row.reimbursement || '').includes('취하'))
     .sort((a, b) => (a.unitPrice || 0) - (b.unitPrice || 0))[0] || null;
+}
+
+async function buildHospitalContext(question: string) {
+  if (!question || !HOSPITAL_QUERY_HINT.test(question)) return '';
+  const searchTerms = question
+    .split(/[\s,.;:!?()\[\]{}"'“”‘’]+/)
+    .map((word: string) => word.trim())
+    .filter((word: string) => word.length >= 2)
+    .filter((word: string) => !['병원', '의원', '의료기관', '요양기관', '구인', '구직', '채용', '근무', '위치', '주소', '지도', '추천', '매칭', '정보', '알려줘'].includes(word))
+    .slice(0, 6);
+  if (searchTerms.length === 0) return '';
+
+  const hospitals = await prisma.hospitalDirectory.findMany({
+    where: {
+      OR: searchTerms.flatMap((term: string) => ([
+        { name: { contains: term } },
+        { address: { contains: term } },
+        { sidoName: { contains: term } },
+        { sigunguName: { contains: term } },
+        { typeName: { contains: term } },
+      ])),
+    },
+    take: 8,
+    select: {
+      name: true,
+      typeName: true,
+      sidoName: true,
+      sigunguName: true,
+      address: true,
+      phone: true,
+      totalDoctors: true,
+      specialists: true,
+      generalDoctors: true,
+      parkingCapacity: true,
+      parkingPaid: true,
+      mondayStart: true,
+      mondayEnd: true,
+      saturdayStart: true,
+      saturdayEnd: true,
+      sundayStart: true,
+      sundayEnd: true,
+      latitude: true,
+      longitude: true,
+    },
+  });
+
+  if (hospitals.length === 0) return '';
+  return `[병의원 DB 조회 정보]
+사용자가 병원, 의원, 의료기관, 구인구직, 위치, 진료시간, 주차, 전화번호를 물으면 아래 병의원 DB 결과를 우선 참고하세요. DB에 없는 값은 모른다고 말하고 추정하지 마세요.
+${hospitals.map((hospital) => {
+    const weekday = hospital.mondayStart && hospital.mondayEnd ? `${hospital.mondayStart}~${hospital.mondayEnd}` : '확인 필요';
+    const saturday = hospital.saturdayStart && hospital.saturdayEnd ? `${hospital.saturdayStart}~${hospital.saturdayEnd}` : '확인 필요';
+    const sunday = hospital.sundayStart && hospital.sundayEnd ? `${hospital.sundayStart}~${hospital.sundayEnd}` : '확인 필요';
+    return `- ${hospital.name} (${hospital.typeName || '종별 확인 필요'})\n  주소: ${hospital.address || `${hospital.sidoName || ''} ${hospital.sigunguName || ''}`.trim() || '확인 필요'}\n  전화: ${hospital.phone || '확인 필요'}\n  의사수: 총 ${hospital.totalDoctors ?? '확인 필요'}명 / 전문의 ${hospital.specialists ?? '확인 필요'}명 / 일반의 ${hospital.generalDoctors ?? '확인 필요'}명\n  진료시간: 월 ${weekday}, 토 ${saturday}, 일 ${sunday}\n  주차: ${hospital.parkingCapacity ? `${hospital.parkingCapacity}대` : '확인 필요'} ${hospital.parkingPaid || ''}\n  좌표: ${hospital.latitude && hospital.longitude ? `${hospital.latitude}, ${hospital.longitude}` : '확인 필요'}`;
+  }).join('\n\n')}`;
 }
 
 async function buildPrescriptionContext(question: string, history: any[] | undefined, hasImage: boolean) {
@@ -260,13 +317,14 @@ export async function POST(req: Request) {
         }
       }
     }
+    const hospitalContext = await buildHospitalContext(question || '');
     const prescriptionContext = await buildPrescriptionContext(question || '', history, !!imageBase64);
 
     const messages: any[] = [];
     messages.push({
       role: 'system',
-      content: `당신은 뛰어난 전문 의학 어시스턴트입니다. 아래에 [사용자 장기 대화 메모리], [사전 제공된 지식베이스 RAG 정보] 또는 [처방 추천/약가 계산 보조 데이터]가 있다면 반드시 이를 최우선으로 참고하여 답변의 <채팅내용>과 <blocks>에 활용해야 합니다.
-    ${chatMemory ? `[사용자 장기 대화 메모리]\n${chatMemory}\n` : ''}${ragContext}\n${prescriptionContext}\n
+      content: `당신은 뛰어난 전문 의학 어시스턴트입니다. 아래에 [사용자 장기 대화 메모리], [사전 제공된 지식베이스 RAG 정보], [병의원 DB 조회 정보] 또는 [처방 추천/약가 계산 보조 데이터]가 있다면 반드시 이를 최우선으로 참고하여 답변의 <채팅내용>과 <blocks>에 활용해야 합니다.
+    ${chatMemory ? `[사용자 장기 대화 메모리]\n${chatMemory}\n` : ''}${ragContext}\n${hospitalContext}\n${prescriptionContext}\n
 반드시 아래의 JSON 포맷으로만 응답해주세요. 프론트엔드의 블록 UI를 렌더링하기 위한 필수 규격입니다:
 {
   "intent_type": "general|disease|drug|image|recruit|translation",
