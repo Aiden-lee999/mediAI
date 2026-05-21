@@ -11,11 +11,12 @@ const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-5.5';
 const OPENAI_STANDARD_MODEL = process.env.OPENAI_STANDARD_MODEL || 'gpt-5.5';
 const OPENAI_FAST_MODEL = process.env.OPENAI_FAST_MODEL || 'gpt-5.4-mini';
 const AIMDNET_FINE_TUNED_MODEL = process.env.AIMDNET_FINE_TUNED_MODEL || '';
-const AIMDNET_GENERATIVE_MODEL = process.env.AIMDNET_GENERATIVE_MODEL || AIMDNET_FINE_TUNED_MODEL || OPENAI_STANDARD_MODEL;
-const AIMDNET_REVIEW_MODEL = process.env.AIMDNET_REVIEW_MODEL || OPENAI_STANDARD_MODEL;
-const AIMDNET_MIXIMIZE_MODE = (process.env.AIMDNET_MIXIMIZE_MODE || 'on').toLowerCase();
+const AIMDNET_LEARNING_MODEL = process.env.AIMDNET_LEARNING_MODEL || OPENAI_STANDARD_MODEL;
+const AIMDNET_LEARNING_MODE = (process.env.AIMDNET_LEARNING_MODE || 'on').toLowerCase();
 const CHAT_MEMORY_KEY = 'chat_memory_summary';
 const MAX_CHAT_MEMORY_CHARS = 2800;
+const MAX_LEARNING_PROMPT_CHARS = 6000;
+const MAX_LEARNING_RESPONSE_CHARS = 12000;
 
 function isImageDataUrl(value: unknown) {
   return /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(String(value || ''));
@@ -28,46 +29,6 @@ function determineModel(question: string, hasImage: boolean) {
   return OPENAI_STANDARD_MODEL;
 }
 
-function shouldUseAimdnetMix(hasImage: boolean) {
-  if (AIMDNET_MIXIMIZE_MODE === 'off' || AIMDNET_MIXIMIZE_MODE === 'false') return false;
-  return !hasImage;
-}
-
-function withAimdnetDedicatedPersona(messages: any[]) {
-  return [
-    {
-      role: 'system',
-      content: `[AIMDNET 전용 생성형 AI]
-당신은 AIMDNET에 특화된 1차 생성 엔진입니다. 일반 챗봇처럼 답하지 말고, AIMDNET의 의료진 워크플로우에 맞게 다음 우선순위를 지키세요.
-1) 같은 채팅창의 이전 대화, 사용자 장기 메모리, 최근 이미지 문맥을 먼저 유지합니다.
-2) 약품 DB, 병의원 DB, 처방/약가 보조 데이터가 있으면 그 데이터를 우선 근거로 씁니다.
-3) 임상 안전성, DUR/보험 삭감 위험, 부족한 문진 항목을 빠뜨리지 않습니다.
-4) 최종 출력은 반드시 기존 JSON UI 규격만 따릅니다.`,
-    },
-    ...messages,
-  ];
-}
-
-function buildAimdnetMixMessages(messages: any[], draft: any) {
-  return [
-    ...messages,
-    {
-      role: 'assistant',
-      content: JSON.stringify(draft),
-    },
-    {
-      role: 'user',
-      content: `[AIMDNET Miximize 최종 검증]
-위 assistant 메시지는 AIMDNET 전용 생성형 AI의 1차 초안입니다. 이제 현재 API 검증 모델로서 같은 대화 문맥, RAG/DB 근거, 안전성 원칙을 대조해 최종 답변을 개선하세요.
-- 초안의 장점은 유지하되 부정확하거나 과장된 내용은 수정하세요.
-- DB/RAG에 없는 사실은 단정하지 말고 확인 필요로 표시하세요.
-- 후속 문맥을 놓치지 말고, 사용자가 이전 내용을 지칭하면 같은 채팅창의 이전 내용을 기준으로 답하세요.
-- 의료적으로 위험한 확정 처방은 핵심 역문진과 경고를 우선하세요.
-- 반드시 JSON 객체만 반환하세요.`,
-    },
-  ];
-}
-
 async function createJsonCompletion(model: string, messages: any[]) {
   const completion = await openai.chat.completions.create({
     model,
@@ -75,6 +36,10 @@ async function createJsonCompletion(model: string, messages: any[]) {
     response_format: { type: 'json_object' },
   });
   return JSON.parse(completion.choices[0].message.content || '{}');
+}
+
+function shouldRunAimdnetLearning() {
+  return AIMDNET_LEARNING_MODE !== 'off' && AIMDNET_LEARNING_MODE !== 'false';
 }
 
 function parseWon(value?: string | null) {
@@ -317,6 +282,146 @@ async function saveChatMemory(userId: string | undefined, memory: string) {
   }).catch((error) => console.error('채팅 메모리 저장 실패:', error));
 }
 
+async function getLearningUser(userId?: string | null) {
+  if (userId) {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (user) return user;
+  }
+  return prisma.user.upsert({
+    where: { email: 'doctor@demo.com' },
+    update: {},
+    create: {
+      email: 'doctor@demo.com',
+      passwordHash: 'dummy',
+      name: '김의사',
+      title: '내과',
+      points: 25,
+    },
+    select: { id: true },
+  });
+}
+
+function inferLearningModality(question: string, hasImage: boolean) {
+  if (/ct|씨티|computed tomography/i.test(question)) return 'CT';
+  if (/mri|엠알|자기공명/i.test(question)) return 'MRI';
+  if (/x\s*-?\s*ray|xray|엑스레이|방사선/i.test(question)) return 'XRAY';
+  if (hasImage) return 'MEDICAL_IMAGE';
+  return 'TEXT_CLINICAL';
+}
+
+function buildLearningHistory(history: unknown) {
+  if (!Array.isArray(history)) return undefined;
+  return history.slice(-12).map((item: any) => ({
+    role: item?.role === 'assistant' ? 'assistant' : 'user',
+    content: compactText(item?.content || item?.parsedData?.chat_reply || '', 900),
+    hasImage: Boolean(item?.image || item?.hasImage),
+  }));
+}
+
+function learningWeight(question: string, parsedResponse: any, hasImage: boolean) {
+  let weight = 1;
+  if (hasImage) weight += 4;
+  if (/x\s*-?\s*ray|xray|엑스레이|ct|씨티|mri|엠알|영상|판독|소견/i.test(question)) weight += 3;
+  if (/확인 필요|정보가 부족|추가.*문진|감별/i.test(JSON.stringify(parsedResponse || {}))) weight += 1;
+  return Math.min(weight, 10);
+}
+
+async function buildAimdnetLearningSignal(params: {
+  question: string;
+  parsedResponse: any;
+  history: unknown;
+  hasImage: boolean;
+  modality: string;
+  weight: number;
+}) {
+  const learningMessages: any[] = [
+    {
+      role: 'system',
+      content: `당신은 답변 생성 AI가 아니라 AIMDNET 학습 전용 엔진입니다. 사용자에게 보여줄 답변을 만들지 마세요. 현재 케이스를 나중에 X-ray/CT/MRI/임상 추론 성능 개선에 쓰기 위한 학습 메타데이터로만 정리합니다. 반드시 JSON 객체만 반환하세요.`,
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        task: 'AIMDNET_SELF_LEARNING_ONLY',
+        modality: params.modality,
+        currentWeight: params.weight,
+        question: compactText(params.question, 1600),
+        answerSummary: compactText(params.parsedResponse?.chat_reply, 1600),
+        blocks: params.parsedResponse?.blocks || [],
+        history: buildLearningHistory(params.history),
+        hasImage: params.hasImage,
+        requiredJsonShape: {
+          modality: 'XRAY|CT|MRI|MEDICAL_IMAGE|TEXT_CLINICAL',
+          learning_weight: '1-10 number',
+          case_summary: 'de-identified learning summary',
+          image_learning_focus: ['missed visual clue or required imaging habit'],
+          reasoning_gaps: ['what the answer should learn to improve'],
+          safety_gaps: ['clinical safety or uncertainty handling'],
+          future_training_label: 'ideal behavior label',
+          retrieval_keywords: ['keywords for future weighting'],
+        },
+      }),
+    },
+  ];
+  return createJsonCompletion(AIMDNET_LEARNING_MODEL, learningMessages);
+}
+
+async function storeAimdnetLearningOnly(params: {
+  userId?: string;
+  question: string;
+  history: unknown;
+  parsedResponse: any;
+  hasImage: boolean;
+}) {
+  if (!shouldRunAimdnetLearning()) return;
+  try {
+    const modality = inferLearningModality(params.question, params.hasImage);
+    const weight = learningWeight(params.question, params.parsedResponse, params.hasImage);
+    const user = await getLearningUser(params.userId);
+    const signal = await buildAimdnetLearningSignal({
+      question: params.question,
+      parsedResponse: params.parsedResponse,
+      history: params.history,
+      hasImage: params.hasImage,
+      modality,
+      weight,
+    }).catch((error) => ({
+      modality,
+      learning_weight: weight,
+      case_summary: compactText(params.question, 800),
+      image_learning_focus: params.hasImage ? ['영상 케이스로 가중 학습 큐에 저장'] : [],
+      reasoning_gaps: ['자동 학습 메타데이터 생성 실패: 관리자 검수 필요'],
+      safety_gaps: [],
+      future_training_label: 'ADMIN_REVIEW_REQUIRED',
+      retrieval_keywords: [modality],
+      error: error?.message || String(error),
+    }));
+
+    const finalWeight = Number(signal?.learning_weight || weight);
+    await prisma.aiTrainingExample.create({
+      data: {
+        userId: user.id,
+        source: 'AIMDNET_LEARNING_ONLY',
+        rating: 'CORRECTION',
+        prompt: compactText(params.question, MAX_LEARNING_PROMPT_CHARS),
+        response: compactText(params.parsedResponse?.chat_reply || JSON.stringify(params.parsedResponse || {}), MAX_LEARNING_RESPONSE_CHARS),
+        responseJson: {
+          ...signal,
+          learning_only: true,
+          weight: Number.isFinite(finalWeight) ? Math.max(1, Math.min(10, finalWeight)) : weight,
+          model: AIMDNET_LEARNING_MODEL,
+          generatedAt: new Date().toISOString(),
+        },
+        history: buildLearningHistory(params.history) ?? undefined,
+        comment: `AIMDNET 학습 전용 큐 · ${modality} · weight ${Number.isFinite(finalWeight) ? finalWeight : weight}`,
+        status: 'RAW',
+      },
+    });
+  } catch (error) {
+    console.error('AIMDNET 학습 전용 저장 실패:', error);
+  }
+}
+
 function buildUpdatedChatMemory(previousMemory: string, question: string, parsedResponse: any) {
   const q = compactText(question, 260);
   const reply = compactText(parsedResponse?.chat_reply, 360);
@@ -463,27 +568,21 @@ export async function POST(req: Request) {
        messages.push({ role: 'user', content: question });
     }
 
-    const useAimdnetMix = shouldUseAimdnetMix(!!imageBase64 || historyHasImage);
-    let parsedResponse: any;
-    if (useAimdnetMix) {
-      const draftResponse = await createJsonCompletion(AIMDNET_GENERATIVE_MODEL, withAimdnetDedicatedPersona(messages));
-      parsedResponse = await createJsonCompletion(AIMDNET_REVIEW_MODEL, buildAimdnetMixMessages(messages, draftResponse));
-      parsedResponse.orchestration_summary = parsedResponse.orchestration_summary
-        ? `AIMDNET 전용 AI + API 검증 · ${parsedResponse.orchestration_summary}`
-        : 'AIMDNET 전용 AI + API 검증으로 최종 답변 생성';
-      parsedResponse.aimdnet_engine = {
-        mode: 'miximize',
-        primaryModel: AIMDNET_GENERATIVE_MODEL,
-        reviewModel: AIMDNET_REVIEW_MODEL,
-      };
-    } else {
-      parsedResponse = await createJsonCompletion(modelToUse, messages);
-      parsedResponse.aimdnet_engine = {
-        mode: 'single',
-        primaryModel: modelToUse,
-      };
-    }
+    const parsedResponse = await createJsonCompletion(modelToUse, messages);
+    parsedResponse.aimdnet_engine = {
+      mode: 'learning_only',
+      answerModel: modelToUse,
+      learnerModel: AIMDNET_LEARNING_MODEL,
+      learnerStatus: shouldRunAimdnetLearning() ? 'queued' : 'off',
+    };
     await saveChatMemory(userId, buildUpdatedChatMemory(chatMemory, question || '', parsedResponse));
+    await storeAimdnetLearningOnly({
+      userId,
+      question: question || '',
+      history,
+      parsedResponse,
+      hasImage: !!imageBase64 || historyHasImage,
+    });
 
     return NextResponse.json(parsedResponse);
   } catch (error: any) {
