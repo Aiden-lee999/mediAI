@@ -11,6 +11,9 @@ const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-5.5';
 const OPENAI_STANDARD_MODEL = process.env.OPENAI_STANDARD_MODEL || 'gpt-5.5';
 const OPENAI_FAST_MODEL = process.env.OPENAI_FAST_MODEL || 'gpt-5.4-mini';
 const AIMDNET_FINE_TUNED_MODEL = process.env.AIMDNET_FINE_TUNED_MODEL || '';
+const AIMDNET_GENERATIVE_MODEL = process.env.AIMDNET_GENERATIVE_MODEL || AIMDNET_FINE_TUNED_MODEL || OPENAI_STANDARD_MODEL;
+const AIMDNET_REVIEW_MODEL = process.env.AIMDNET_REVIEW_MODEL || OPENAI_STANDARD_MODEL;
+const AIMDNET_MIXIMIZE_MODE = (process.env.AIMDNET_MIXIMIZE_MODE || 'on').toLowerCase();
 const CHAT_MEMORY_KEY = 'chat_memory_summary';
 const MAX_CHAT_MEMORY_CHARS = 2800;
 
@@ -23,6 +26,55 @@ function determineModel(question: string, hasImage: boolean) {
   if (AIMDNET_FINE_TUNED_MODEL) return AIMDNET_FINE_TUNED_MODEL;
   if (!question || question.length < 50) return OPENAI_FAST_MODEL;
   return OPENAI_STANDARD_MODEL;
+}
+
+function shouldUseAimdnetMix(hasImage: boolean) {
+  if (AIMDNET_MIXIMIZE_MODE === 'off' || AIMDNET_MIXIMIZE_MODE === 'false') return false;
+  return !hasImage;
+}
+
+function withAimdnetDedicatedPersona(messages: any[]) {
+  return [
+    {
+      role: 'system',
+      content: `[AIMDNET 전용 생성형 AI]
+당신은 AIMDNET에 특화된 1차 생성 엔진입니다. 일반 챗봇처럼 답하지 말고, AIMDNET의 의료진 워크플로우에 맞게 다음 우선순위를 지키세요.
+1) 같은 채팅창의 이전 대화, 사용자 장기 메모리, 최근 이미지 문맥을 먼저 유지합니다.
+2) 약품 DB, 병의원 DB, 처방/약가 보조 데이터가 있으면 그 데이터를 우선 근거로 씁니다.
+3) 임상 안전성, DUR/보험 삭감 위험, 부족한 문진 항목을 빠뜨리지 않습니다.
+4) 최종 출력은 반드시 기존 JSON UI 규격만 따릅니다.`,
+    },
+    ...messages,
+  ];
+}
+
+function buildAimdnetMixMessages(messages: any[], draft: any) {
+  return [
+    ...messages,
+    {
+      role: 'assistant',
+      content: JSON.stringify(draft),
+    },
+    {
+      role: 'user',
+      content: `[AIMDNET Miximize 최종 검증]
+위 assistant 메시지는 AIMDNET 전용 생성형 AI의 1차 초안입니다. 이제 현재 API 검증 모델로서 같은 대화 문맥, RAG/DB 근거, 안전성 원칙을 대조해 최종 답변을 개선하세요.
+- 초안의 장점은 유지하되 부정확하거나 과장된 내용은 수정하세요.
+- DB/RAG에 없는 사실은 단정하지 말고 확인 필요로 표시하세요.
+- 후속 문맥을 놓치지 말고, 사용자가 이전 내용을 지칭하면 같은 채팅창의 이전 내용을 기준으로 답하세요.
+- 의료적으로 위험한 확정 처방은 핵심 역문진과 경고를 우선하세요.
+- 반드시 JSON 객체만 반환하세요.`,
+    },
+  ];
+}
+
+async function createJsonCompletion(model: string, messages: any[]) {
+  const completion = await openai.chat.completions.create({
+    model,
+    messages,
+    response_format: { type: 'json_object' },
+  });
+  return JSON.parse(completion.choices[0].message.content || '{}');
 }
 
 function parseWon(value?: string | null) {
@@ -411,14 +463,26 @@ export async function POST(req: Request) {
        messages.push({ role: 'user', content: question });
     }
 
-    const completion = await openai.chat.completions.create({
-      model: modelToUse,
-      messages: messages,
-      response_format: { type: "json_object" }
-    });
-
-    const replyContent = completion.choices[0].message.content;
-    const parsedResponse = JSON.parse(replyContent || '{}');
+    const useAimdnetMix = shouldUseAimdnetMix(!!imageBase64 || historyHasImage);
+    let parsedResponse: any;
+    if (useAimdnetMix) {
+      const draftResponse = await createJsonCompletion(AIMDNET_GENERATIVE_MODEL, withAimdnetDedicatedPersona(messages));
+      parsedResponse = await createJsonCompletion(AIMDNET_REVIEW_MODEL, buildAimdnetMixMessages(messages, draftResponse));
+      parsedResponse.orchestration_summary = parsedResponse.orchestration_summary
+        ? `AIMDNET 전용 AI + API 검증 · ${parsedResponse.orchestration_summary}`
+        : 'AIMDNET 전용 AI + API 검증으로 최종 답변 생성';
+      parsedResponse.aimdnet_engine = {
+        mode: 'miximize',
+        primaryModel: AIMDNET_GENERATIVE_MODEL,
+        reviewModel: AIMDNET_REVIEW_MODEL,
+      };
+    } else {
+      parsedResponse = await createJsonCompletion(modelToUse, messages);
+      parsedResponse.aimdnet_engine = {
+        mode: 'single',
+        primaryModel: modelToUse,
+      };
+    }
     await saveChatMemory(userId, buildUpdatedChatMemory(chatMemory, question || '', parsedResponse));
 
     return NextResponse.json(parsedResponse);
