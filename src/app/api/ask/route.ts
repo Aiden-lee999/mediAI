@@ -13,6 +13,7 @@ const OPENAI_FAST_MODEL = process.env.OPENAI_FAST_MODEL || 'gpt-5.4-mini';
 const AIMDNET_FINE_TUNED_MODEL = process.env.AIMDNET_FINE_TUNED_MODEL || '';
 const AIMDNET_LEARNING_MODEL = process.env.AIMDNET_LEARNING_MODEL || OPENAI_STANDARD_MODEL;
 const AIMDNET_LEARNING_MODE = (process.env.AIMDNET_LEARNING_MODE || 'on').toLowerCase();
+const AIMDNET_HIGH_ACCURACY_MODE = (process.env.AIMDNET_HIGH_ACCURACY_MODE || 'off').toLowerCase();
 const CHAT_MEMORY_KEY = 'chat_memory_summary';
 const MAX_CHAT_MEMORY_CHARS = 2800;
 const MAX_LEARNING_PROMPT_CHARS = 6000;
@@ -25,8 +26,11 @@ function isImageDataUrl(value: unknown) {
 function determineModel(question: string, hasImage: boolean) {
   if (hasImage) return OPENAI_IMAGE_MODEL;
   if (AIMDNET_FINE_TUNED_MODEL) return AIMDNET_FINE_TUNED_MODEL;
-  if (!question || question.length < 50) return OPENAI_FAST_MODEL;
-  return OPENAI_STANDARD_MODEL;
+  if (AIMDNET_HIGH_ACCURACY_MODE === 'on' || AIMDNET_HIGH_ACCURACY_MODE === 'true') {
+    if (!question || question.length < 50) return OPENAI_FAST_MODEL;
+    return OPENAI_STANDARD_MODEL;
+  }
+  return OPENAI_FAST_MODEL;
 }
 
 async function createJsonCompletion(model: string, messages: any[]) {
@@ -89,6 +93,15 @@ const RX_TEMPLATES: RxTemplate[] = [
 ];
 
 const HOSPITAL_QUERY_HINT = /병원|의원|요양기관|의료기관|구인|구직|채용|근무|위치|주소|지도|진료시간|주차|응급|야간|전화|원장|의사|매칭/i;
+const CLINICAL_WORKFLOW_GUIDE = `[AIMDNET 핵심 진료 워크플로우]
+사용자의 목표는 "의사가 실제 진료 중 묻는 질문에 대해 진단 보조 → 약물 추천/검토 → 병용금기·적응증 검토 → 법률/의무기록 리스크 점검"을 한 흐름으로 받는 것입니다. 다음을 기본 작동 원칙으로 삼으세요.
+1) 진단 질문이면: 가능한 진단/감별진단, 근거, 위험 신호, 추가 문진, 필요한 검사, 1차 처치/처방 옵션을 순서대로 제시합니다.
+2) 약을 쓰려는 질문이면: 먼저 어떤 질병/증상/환자 조건에 쓰려는지 확인합니다. 적응증이 불명확하면 확정 추천하지 말고 확인 질문을 합니다.
+3) 특정 약이 언급되면: 그 약이 어떤 질병/상황에서 잘 맞는지, 같이 쓰면 좋은 약/피해야 할 약, 금기·주의·상호작용·모니터링을 정리합니다.
+4) 병용 약물 질문이면: 같이 쓰면 안 되는 조합, 주의 조합, 대체 조합, DUR/보험 삭감 가능성을 분리합니다.
+5) 진료/처방 방식의 법률 검토를 물으면: 설명의무, 진료기록 기재, 가이드라인 부합성, off-label/비급여 고지, 전원/추적관찰 필요성, 분쟁 방어 포인트를 점검합니다. 법률 자문이 아니라 의료분쟁 예방 참고 의견임을 명시합니다.
+6) 정보가 부족하면 답을 멈추지 말고, "현재 정보로 가능한 판단"과 "반드시 확인할 질문"을 함께 제시합니다.
+7) 가능하면 blocks에 diagnosis_assist, medication_safety, prescription_options, insurance_warning, legal_review를 조합해 반환합니다.`;
 
 async function pickPricedDrug(keyword: string) {
   const rows = await prisma.drug.findMany({
@@ -326,6 +339,65 @@ function learningWeight(question: string, parsedResponse: any, hasImage: boolean
   return Math.min(weight, 10);
 }
 
+function hasBlock(parsedResponse: any, blockType: string) {
+  return Array.isArray(parsedResponse?.blocks) && parsedResponse.blocks.some((block: any) => block?.block_type === blockType);
+}
+
+function enhanceClinicalWorkflowBlocks(parsedResponse: any, question: string) {
+  const text = `${question}\n${parsedResponse?.chat_reply || ''}`;
+  const blocks = Array.isArray(parsedResponse?.blocks) ? parsedResponse.blocks : [];
+  const nextBlocks = [...blocks];
+
+  const diagnosisIntent = /진단|감별|증상|흉통|복통|두통|발열|기침|호흡곤란|어지럼|검사|x\s*-?\s*ray|xray|ct|mri|판독/i.test(text);
+  const medicationIntent = /약|처방|병용|상호작용|금기|같이\s*쓰|피해야|추천|투약|복용|DUR|삭감/i.test(text);
+  const legalIntent = /법률|법적|분쟁|소송|설명.{0,4}의무|동의서|의무기록|기록|문제\s*없|방어|고지/i.test(text);
+
+  if (diagnosisIntent && !hasBlock({ blocks: nextBlocks }, 'diagnosis_assist')) {
+    nextBlocks.unshift({
+      block_type: 'diagnosis_assist',
+      title: '진단 방향 정리',
+      body: '현재 정보만으로 확정 진단은 피하고, 가장 가능성 높은 감별진단과 위험 신호를 먼저 정리해야 합니다. 활력징후, 증상 발생 시점, 동반 증상, 기저질환, 복용약, 검사 결과를 추가 확인하세요.',
+      meta_json: {
+        differentials: [
+          { diagnosis: '우선 감별 필요', supporting: '사용자 질문의 증상/검사 맥락', against: '세부 병력과 검사값 부족', next_step: '활력징후, 위험 신호, 필요한 검사 확인' },
+        ],
+      },
+      sort_order: 0,
+    });
+  }
+
+  if (medicationIntent && !hasBlock({ blocks: nextBlocks }, 'medication_safety')) {
+    nextBlocks.push({
+      block_type: 'medication_safety',
+      title: '약물 선택 전 확인',
+      body: '약을 쓰려는 질병/증상, 환자 나이, 임신 여부, 신장·간 기능, 알레르기, 현재 복용약을 확인한 뒤 적응증과 병용금기를 판단하세요.',
+      meta_json: {
+        medication_checks: [
+          { drug: '검토 대상 약물', indication_fit: '질병/증상 확인 후 판단', avoid_with: ['중복 성분', '중대한 상호작용 약물', '환자 금기 상황'], pairs_well_with: ['진단과 중증도 확인 후 선택'], monitoring: ['부작용', '치료 반응', 'DUR/보험 기준'] },
+        ],
+      },
+      sort_order: 2,
+    });
+  }
+
+  if (legalIntent && !hasBlock({ blocks: nextBlocks }, 'legal_review')) {
+    nextBlocks.push({
+      block_type: 'legal_review',
+      title: '진료기록·설명의무 체크',
+      body: '의료분쟁 예방 관점의 참고 의견입니다. 확정 법률 자문은 아니며, 고위험 상황은 병원 법무/전문가 검토가 필요합니다.',
+      meta_json: {
+        legal_checks: [
+          { issue: '설명의무', risk: 'medium', documentation: '진단 추정, 치료 선택지, 부작용, 악화 시 재내원/응급실 안내를 기록', mitigation: '환자가 이해했는지 확인하고 동의/거부 내용을 남김' },
+          { issue: '진료기록 방어력', risk: 'medium', documentation: '문진, 신체진찰, 감별진단, 처방 근거, 추적계획을 구체적으로 기재', mitigation: '위험 신호와 전원 기준을 명확히 안내' },
+        ],
+      },
+      sort_order: 3,
+    });
+  }
+
+  return { ...parsedResponse, blocks: nextBlocks };
+}
+
 async function buildAimdnetLearningSignal(params: {
   question: string;
   parsedResponse: any;
@@ -378,24 +450,21 @@ async function storeAimdnetLearningOnly(params: {
     const modality = inferLearningModality(params.question, params.hasImage);
     const weight = learningWeight(params.question, params.parsedResponse, params.hasImage);
     const user = await getLearningUser(params.userId);
-    const signal = await buildAimdnetLearningSignal({
-      question: params.question,
-      parsedResponse: params.parsedResponse,
-      history: params.history,
-      hasImage: params.hasImage,
-      modality,
-      weight,
-    }).catch((error) => ({
+    const responseText = JSON.stringify(params.parsedResponse || {});
+    const signal = {
       modality,
       learning_weight: weight,
       case_summary: compactText(params.question, 800),
-      image_learning_focus: params.hasImage ? ['영상 케이스로 가중 학습 큐에 저장'] : [],
-      reasoning_gaps: ['자동 학습 메타데이터 생성 실패: 관리자 검수 필요'],
-      safety_gaps: [],
-      future_training_label: 'ADMIN_REVIEW_REQUIRED',
-      retrieval_keywords: [modality],
-      error: error?.message || String(error),
-    }));
+      image_learning_focus: params.hasImage ? ['X-ray/CT/MRI 등 영상 판독 질의는 관리자 검수와 향후 fine-tuning에서 높은 우선순위로 사용'] : [],
+      reasoning_gaps: /확인 필요|정보가 부족|감별|추가/i.test(responseText)
+        ? ['정보 부족 상황에서 어떤 추가 문진/검사가 필요한지 학습']
+        : ['실제 의사 질의와 답변 패턴을 누적 학습'],
+      safety_gaps: /금기|상호작용|DUR|삭감|주의|법률|설명의무|기록/i.test(`${params.question}\n${responseText}`)
+        ? ['약물 안전성, 보험/DUR, 설명의무와 의무기록 포인트를 함께 학습']
+        : [],
+      future_training_label: params.hasImage ? 'PRIORITY_MEDICAL_IMAGE_CASE' : 'CLINICAL_REASONING_CASE',
+      retrieval_keywords: [modality, ...String(params.question || '').split(/\s+/).filter((word) => word.length >= 2).slice(0, 8)],
+    };
 
     const finalWeight = Number(signal?.learning_weight || weight);
     await prisma.aiTrainingExample.create({
@@ -498,19 +567,22 @@ export async function POST(req: Request) {
     const messages: any[] = [];
     messages.push({
       role: 'system',
-      content: `당신은 뛰어난 전문 의학 어시스턴트입니다. 아래에 [사용자 장기 대화 메모리], [사전 제공된 지식베이스 RAG 정보], [병의원 DB 조회 정보] 또는 [처방 추천/약가 계산 보조 데이터]가 있다면 반드시 이를 최우선으로 참고하여 답변의 <채팅내용>과 <blocks>에 활용해야 합니다. 같은 채팅창의 이전 대화와 이전에 첨부된 이미지는 현재 질문의 직접적인 문맥입니다. 사용자가 "다시", "이렇게", "이전 사진", "방금 이미지"처럼 말하면 새 이미지를 요구하지 말고 대화 이력의 가장 최근 이미지를 기준으로 재분석하세요.
-    ${chatMemory ? `[사용자 장기 대화 메모리]\n${chatMemory}\n` : ''}${ragContext}\n${hospitalContext}\n${prescriptionContext}\n
+      content: `당신은 뛰어난 전문 의학 어시스턴트입니다. 아래에 [사용자 장기 대화 메모리], [AIMDNET 핵심 진료 워크플로우], [사전 제공된 지식베이스 RAG 정보], [병의원 DB 조회 정보] 또는 [처방 추천/약가 계산 보조 데이터]가 있다면 반드시 이를 최우선으로 참고하여 답변의 <채팅내용>과 <blocks>에 활용해야 합니다. 같은 채팅창의 이전 대화와 이전에 첨부된 이미지는 현재 질문의 직접적인 문맥입니다. 사용자가 "다시", "이렇게", "이전 사진", "방금 이미지"처럼 말하면 새 이미지를 요구하지 말고 대화 이력의 가장 최근 이미지를 기준으로 재분석하세요.
+    ${chatMemory ? `[사용자 장기 대화 메모리]\n${chatMemory}\n` : ''}${CLINICAL_WORKFLOW_GUIDE}\n${ragContext}\n${hospitalContext}\n${prescriptionContext}\n
 반드시 아래의 JSON 포맷으로만 응답해주세요. 프론트엔드의 블록 UI를 렌더링하기 위한 필수 규격입니다:
 {
-  "intent_type": "general|disease|drug|image|recruit|translation",
+  "intent_type": "general|diagnosis|disease|drug|medication_safety|image|legal|recruit|translation",
   "orchestration_summary": "수행한 AI 인텔리전스 작업 (예: X-ray 판독 및 전문의 소견 종합)",
   "chat_reply": "사용자에게 건넬 친절한 일반 텍스트 답변",
   "blocks": [
     {
-      "block_type": "textbook|journal|md_tip|doctor_consensus|doctor_opinion|insurance_warning|expert_warning|image_read|sponsor_card|recruit_cards|drug_cards|prescription_options|translation",
+      "block_type": "diagnosis_assist|medication_safety|legal_review|textbook|journal|md_tip|doctor_consensus|doctor_opinion|insurance_warning|expert_warning|image_read|sponsor_card|recruit_cards|drug_cards|prescription_options|translation",
       "title": "화면에 표시될 블록의 제목",
       "body": "블록의 내용 (HTML 태그 허용 안됨, 일반 텍스트)",
       "meta_json": {
+        "differentials": [{ "diagnosis": "감별진단", "supporting": "근거", "against": "반대 근거", "next_step": "다음 확인" }],
+        "medication_checks": [{ "drug": "약품명", "indication_fit": "적응증 적합성", "avoid_with": ["피해야 할 약/상황"], "pairs_well_with": ["함께 고려 가능"], "monitoring": ["모니터링"] }],
+        "legal_checks": [{ "issue": "법률/분쟁 리스크", "risk": "low|medium|high", "documentation": "기록할 내용", "mitigation": "예방 조치" }],
         "drugs": [
           {
             "name": "약품명",
@@ -540,6 +612,9 @@ export async function POST(req: Request) {
   ]
 }
 - 보험 삭감 경고가 필요하면 'insurance_warning', 약물 추천시 'drug_cards', 처방 팁은 'md_tip' 블록을 적극 활용하세요.
+- 진단 보조는 'diagnosis_assist' 블록을 우선 사용하고, 감별진단/근거/추가검사/위험신호/다음 액션을 포함하세요.
+- 특정 약물 또는 병용약 질문은 'medication_safety' 블록을 우선 사용하고, 적응증 확인 질문, 같이 쓰면 안 되는 약, 잘 어울리는 조합, 모니터링, 대체약을 포함하세요.
+- 법률/분쟁/의무기록/설명의무 질문은 'legal_review' 블록을 사용하고, 진료기록 문구 예시와 설명의무 체크포인트를 포함하세요. 단, 변호사 법률자문이 아닌 의료분쟁 예방 참고 의견이라고 밝히세요.
 - 사용자가 증상·사진·검사결과·처방 상담을 하면 반드시 먼저 판단하세요: 정보가 부족하면 chat_reply와 md_tip 블록에서 핵심 역문진 3~6개를 물어보세요. 정보가 충분하면 'prescription_options' 블록을 만들어 추천 1, 추천 2 형식으로 제시하세요.
 - prescription_options 블록은 meta_json.prescriptions 배열을 반드시 채우세요. 각 추천에는 A약/B약 같은 실제 제품명, 성분, 단가, 용법/일수 가정, 약제별 추정금액, 총 약가, 보험 약품비 추정, 삭감/DUR 주의사항을 포함하세요.
 - 총 약가와 보험수가는 허위로 단정하지 말고, DB 약가가 있는 경우에는 그 값을 사용해 추정 계산하고 "진찰료·검사료·처치료는 별도"라고 명시하세요. DB 약가가 없으면 "약가 확인 필요"라고 표시하세요.
@@ -568,7 +643,7 @@ export async function POST(req: Request) {
        messages.push({ role: 'user', content: question });
     }
 
-    const parsedResponse = await createJsonCompletion(modelToUse, messages);
+    const parsedResponse = enhanceClinicalWorkflowBlocks(await createJsonCompletion(modelToUse, messages), question || '');
     parsedResponse.aimdnet_engine = {
       mode: 'learning_only',
       answerModel: modelToUse,

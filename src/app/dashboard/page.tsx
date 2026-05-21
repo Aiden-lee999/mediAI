@@ -523,6 +523,66 @@ export default function DashboardPage() {
              <button onClick={() => { setFeedbackTarget(null); setOpinionModalOpen(true); }} className="w-full border border-dashed border-slate-400 bg-transparent py-2 rounded text-slate-500 text-sm hover:bg-slate-100">+</button>
           </div>
         );
+      case 'diagnosis_assist':
+        return (
+          <div key={index} className="bg-indigo-50 border border-indigo-200 p-4 rounded-lg mb-3 shadow-sm">
+            <h3 className="font-bold text-indigo-900 text-sm mb-2">🩺 진단 어시스트: {title}</h3>
+            <div className="text-sm text-indigo-900 mb-3" dangerouslySetInnerHTML={{ __html: body?.replace(/\n/g, '<br/>') || '' }} />
+            {meta_json?.differentials?.length > 0 && (
+              <div className="space-y-2">
+                {meta_json.differentials.map((dx: any, i: number) => (
+                  <div key={i} className="rounded-lg bg-white border border-indigo-100 p-3 text-xs">
+                    <div className="font-black text-indigo-800">{dx.diagnosis || `감별진단 ${i + 1}`}</div>
+                    {dx.supporting && <div className="mt-1 text-slate-700">근거: {dx.supporting}</div>}
+                    {dx.against && <div className="mt-1 text-slate-500">반대 근거: {dx.against}</div>}
+                    {dx.next_step && <div className="mt-1 text-blue-700">다음 확인: {dx.next_step}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      case 'medication_safety':
+        return (
+          <div key={index} className="bg-emerald-50 border border-emerald-200 p-4 rounded-lg mb-3 shadow-sm">
+            <h3 className="font-bold text-emerald-900 text-sm mb-2">💊 약물 적응증·병용 안전성: {title}</h3>
+            <div className="text-sm text-emerald-900 mb-3" dangerouslySetInnerHTML={{ __html: body?.replace(/\n/g, '<br/>') || '' }} />
+            {meta_json?.medication_checks?.length > 0 && (
+              <div className="space-y-2">
+                {meta_json.medication_checks.map((check: any, i: number) => (
+                  <div key={i} className="rounded-lg bg-white border border-emerald-100 p-3 text-xs">
+                    <div className="font-black text-emerald-800">{check.drug || `약물 ${i + 1}`}</div>
+                    {check.indication_fit && <div className="mt-1 text-slate-700">적응증: {check.indication_fit}</div>}
+                    {check.avoid_with?.length > 0 && <div className="mt-1 text-red-700">피해야 할 조합: {check.avoid_with.join(', ')}</div>}
+                    {check.pairs_well_with?.length > 0 && <div className="mt-1 text-blue-700">함께 고려 가능: {check.pairs_well_with.join(', ')}</div>}
+                    {check.monitoring?.length > 0 && <div className="mt-1 text-amber-700">모니터링: {check.monitoring.join(', ')}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      case 'legal_review':
+        return (
+          <div key={index} className="bg-yellow-50 border border-yellow-300 p-4 rounded-lg mb-3 shadow-sm">
+            <h3 className="font-bold text-yellow-900 text-sm mb-2">⚖️ 진료 법률·분쟁 리스크 검토: {title}</h3>
+            <div className="text-sm text-yellow-950 mb-3" dangerouslySetInnerHTML={{ __html: body?.replace(/\n/g, '<br/>') || '' }} />
+            {meta_json?.legal_checks?.length > 0 && (
+              <div className="space-y-2">
+                {meta_json.legal_checks.map((item: any, i: number) => (
+                  <div key={i} className="rounded-lg bg-white border border-yellow-100 p-3 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-black text-yellow-900">{item.issue || `체크포인트 ${i + 1}`}</span>
+                      {item.risk && <span className="rounded-full bg-yellow-100 px-2 py-0.5 font-bold text-yellow-800">{item.risk}</span>}
+                    </div>
+                    {item.documentation && <div className="mt-1 text-slate-700">기록: {item.documentation}</div>}
+                    {item.mitigation && <div className="mt-1 text-blue-700">예방 조치: {item.mitigation}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
       case 'insurance_warning':
         return (
           <div key={index} className="border-l-4 border-amber-500 bg-amber-50 p-4 rounded-r-lg mb-3 shadow-sm">
