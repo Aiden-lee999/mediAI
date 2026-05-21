@@ -103,6 +103,23 @@ const CLINICAL_WORKFLOW_GUIDE = `[AIMDNET 핵심 진료 워크플로우]
 6) 정보가 부족하면 답을 멈추지 말고, "현재 정보로 가능한 판단"과 "반드시 확인할 질문"을 함께 제시합니다.
 7) 가능하면 blocks에 diagnosis_assist, medication_safety, prescription_options, insurance_warning, legal_review를 조합해 반환합니다.`;
 
+const RADIOLOGY_WORKFLOW_GUIDE = `[AIMDNET 영상 판독 보조 워크플로우]
+X-ray/CT/MRI/초음파/검사 이미지가 있으면 반드시 영상 종류와 촬영 부위를 먼저 추정하고, 확정 판독이 아니라 "의사용 판독 보조"로 답하세요.
+1) 이미지 품질/촬영 방향/부위: AP/PA/lateral/axial 등 확인 가능한 범위만 말합니다.
+2) 체계적 체크: 정렬·골절·폐야·심장크기·종격동·흉수/기흉·복부 가스·연부조직 등 부위별 체크리스트를 적용합니다.
+3) 이상 소견 후보: 보이는 소견과 안 보이는 소견을 구분합니다.
+4) 위험 소견: 기흉, 폐렴/침윤, 심부전, 골절, 출혈/종괴 의심, 급성 복증 등 놓치면 안 되는 항목을 따로 표시합니다.
+5) 다음 액션: 추가 영상, 활력징후/신체진찰, 검사, 전문의/응급 전원 기준을 제시합니다.
+6) 이전 이미지가 있으면 후속 질문에서 반드시 같은 이미지 기준으로 재판독합니다.`;
+
+const PATIENT_CONTEXT_FIELDS = [
+  { key: 'ageSex', label: '나이/성별', pattern: /(\d{1,3}\s*(?:세|살)|남자|여자|남성|여성|M\/?\d{1,3}|F\/?\d{1,3})/gi },
+  { key: 'symptoms', label: '주요 증상', pattern: /(흉통|복통|두통|발열|기침|호흡곤란|어지럼|구토|설사|부종|통증|가래|객혈|실신|마비|발진)/gi },
+  { key: 'conditions', label: '기저질환', pattern: /(고혈압|당뇨|심부전|협심증|심근경색|천식|COPD|신부전|간경변|암|임신|고지혈증|뇌졸중)/gi },
+  { key: 'medications', label: '언급 약물', pattern: /([가-힣A-Za-z0-9-]*(?:정|캡슐|주|시럽|연고)|아스피린|와파린|리바록사반|메트포르민|암로디핀|로사르탄|스타틴|NSAID|스테로이드|항생제)/gi },
+  { key: 'tests', label: '검사/영상', pattern: /(x\s*-?\s*ray|xray|엑스레이|ct|씨티|mri|엠알|초음파|혈액검사|심전도|ECG|EKG|troponin|CRP|CBC)/gi },
+];
+
 async function pickPricedDrug(keyword: string) {
   const rows = await prisma.drug.findMany({
     where: {
@@ -277,6 +294,48 @@ function compactText(value: unknown, max = 320) {
     .slice(0, max);
 }
 
+function uniqueMatches(text: string, pattern: RegExp, limit = 8) {
+  const matches = text.match(pattern) || [];
+  return [...new Set(matches.map((item) => item.trim()).filter(Boolean))].slice(0, limit);
+}
+
+function buildPatientContext(history: unknown, question: string, hasImage: boolean) {
+  const historyText = Array.isArray(history)
+    ? history.map((item: any) => [item?.content, item?.parsedData?.chat_reply].filter(Boolean).join(' ')).join('\n')
+    : '';
+  const text = `${historyText}\n${question || ''}`;
+  const extracted = PATIENT_CONTEXT_FIELDS.map((field) => ({
+    key: field.key,
+    label: field.label,
+    values: uniqueMatches(text, field.pattern),
+  })).filter((field) => field.values.length > 0);
+
+  const openQuestions = [
+    '나이/성별',
+    '주요 증상 시작 시점과 지속 시간',
+    '활력징후와 중증도',
+    '기저질환/임신/신장·간 기능',
+    '현재 복용약과 알레르기',
+  ].filter((label) => !extracted.some((field) => field.label.includes(label.split('/')[0]))).slice(0, 5);
+
+  return {
+    hasAny: extracted.length > 0 || hasImage,
+    extracted,
+    openQuestions,
+    hasImage,
+    summary: extracted.map((field) => `${field.label}: ${field.values.join(', ')}`).join(' / ') || (hasImage ? '첨부 영상/이미지 중심 케이스' : ''),
+  };
+}
+
+function buildPatientContextPrompt(context: ReturnType<typeof buildPatientContext>) {
+  if (!context.hasAny) return '';
+  return `[현재 환자 문맥 카드]
+${context.summary || '구조화된 환자 정보가 아직 부족합니다.'}
+이미지/영상 첨부: ${context.hasImage ? '있음' : '없음'}
+아직 확인할 항목: ${context.openQuestions.length > 0 ? context.openQuestions.join(', ') : '현재 대화 기준 큰 공백 없음'}
+후속 질문에서 "이 환자", "아까 약", "그 진단", "방금 사진"이라고 하면 이 환자 문맥을 유지하세요.`;
+}
+
 async function getChatMemory(userId?: string) {
   if (!userId) return '';
   const pref = await prisma.userPreference.findUnique({
@@ -335,6 +394,8 @@ function learningWeight(question: string, parsedResponse: any, hasImage: boolean
   let weight = 1;
   if (hasImage) weight += 4;
   if (/x\s*-?\s*ray|xray|엑스레이|ct|씨티|mri|엠알|영상|판독|소견/i.test(question)) weight += 3;
+  if (/병용|상호작용|금기|DUR|삭감|약.*추천|처방/i.test(question)) weight += 2;
+  if (/법률|법적|분쟁|설명의무|의무기록|소송|동의서/i.test(question)) weight += 2;
   if (/확인 필요|정보가 부족|추가.*문진|감별/i.test(JSON.stringify(parsedResponse || {}))) weight += 1;
   return Math.min(weight, 10);
 }
@@ -343,14 +404,44 @@ function hasBlock(parsedResponse: any, blockType: string) {
   return Array.isArray(parsedResponse?.blocks) && parsedResponse.blocks.some((block: any) => block?.block_type === blockType);
 }
 
-function enhanceClinicalWorkflowBlocks(parsedResponse: any, question: string) {
+function enhanceClinicalWorkflowBlocks(parsedResponse: any, question: string, history: unknown, hasImage: boolean) {
   const text = `${question}\n${parsedResponse?.chat_reply || ''}`;
   const blocks = Array.isArray(parsedResponse?.blocks) ? parsedResponse.blocks : [];
   const nextBlocks = [...blocks];
+  const patientContext = buildPatientContext(history, question, hasImage);
 
   const diagnosisIntent = /진단|감별|증상|흉통|복통|두통|발열|기침|호흡곤란|어지럼|검사|x\s*-?\s*ray|xray|ct|mri|판독/i.test(text);
   const medicationIntent = /약|처방|병용|상호작용|금기|같이\s*쓰|피해야|추천|투약|복용|DUR|삭감/i.test(text);
   const legalIntent = /법률|법적|분쟁|소송|설명.{0,4}의무|동의서|의무기록|기록|문제\s*없|방어|고지/i.test(text);
+  const radiologyIntent = hasImage || /x\s*-?\s*ray|xray|엑스레이|ct|씨티|mri|엠알|초음파|영상|판독|사진/i.test(text);
+
+  if (patientContext.hasAny && !hasBlock({ blocks: nextBlocks }, 'patient_context')) {
+    nextBlocks.unshift({
+      block_type: 'patient_context',
+      title: '현재 환자 문맥',
+      body: patientContext.summary || '아직 환자 정보가 부족합니다. 아래 항목을 확인하면 이후 답변이 더 정확해집니다.',
+      meta_json: {
+        context: patientContext.extracted,
+        open_questions: patientContext.openQuestions,
+        hasImage: patientContext.hasImage,
+      },
+      sort_order: -1,
+    });
+  }
+
+  if (radiologyIntent && !hasBlock({ blocks: nextBlocks }, 'radiology_checklist')) {
+    nextBlocks.push({
+      block_type: 'radiology_checklist',
+      title: '영상 판독 체크리스트',
+      body: '의료영상은 확정 판독이 아니라 보조 의견입니다. 영상 종류/부위/품질을 먼저 확인하고, 놓치면 안 되는 위험 소견을 체계적으로 점검하세요.',
+      meta_json: {
+        modality: inferLearningModality(question, hasImage),
+        checklist: ['촬영 부위·방향·품질', '명백한 비정상 소견', '놓치면 안 되는 응급 소견', '임상 증상과의 일치 여부', '추가 촬영/검사/전원 필요성'],
+        red_flags: ['기흉', '폐렴/침윤', '심부전/폐부종', '골절/탈구', '출혈/종괴 의심', '급성 악화 징후'],
+      },
+      sort_order: 1,
+    });
+  }
 
   if (diagnosisIntent && !hasBlock({ blocks: nextBlocks }, 'diagnosis_assist')) {
     nextBlocks.unshift({
@@ -563,12 +654,14 @@ export async function POST(req: Request) {
     }
     const hospitalContext = await buildHospitalContext(question || '');
     const prescriptionContext = await buildPrescriptionContext(question || '', history, !!imageBase64);
+    const patientContext = buildPatientContext(history, question || '', !!imageBase64 || historyHasImage);
+    const patientContextPrompt = buildPatientContextPrompt(patientContext);
 
     const messages: any[] = [];
     messages.push({
       role: 'system',
-      content: `당신은 뛰어난 전문 의학 어시스턴트입니다. 아래에 [사용자 장기 대화 메모리], [AIMDNET 핵심 진료 워크플로우], [사전 제공된 지식베이스 RAG 정보], [병의원 DB 조회 정보] 또는 [처방 추천/약가 계산 보조 데이터]가 있다면 반드시 이를 최우선으로 참고하여 답변의 <채팅내용>과 <blocks>에 활용해야 합니다. 같은 채팅창의 이전 대화와 이전에 첨부된 이미지는 현재 질문의 직접적인 문맥입니다. 사용자가 "다시", "이렇게", "이전 사진", "방금 이미지"처럼 말하면 새 이미지를 요구하지 말고 대화 이력의 가장 최근 이미지를 기준으로 재분석하세요.
-    ${chatMemory ? `[사용자 장기 대화 메모리]\n${chatMemory}\n` : ''}${CLINICAL_WORKFLOW_GUIDE}\n${ragContext}\n${hospitalContext}\n${prescriptionContext}\n
+      content: `당신은 뛰어난 전문 의학 어시스턴트입니다. 아래에 [사용자 장기 대화 메모리], [현재 환자 문맥 카드], [AIMDNET 핵심 진료 워크플로우], [AIMDNET 영상 판독 보조 워크플로우], [사전 제공된 지식베이스 RAG 정보], [병의원 DB 조회 정보] 또는 [처방 추천/약가 계산 보조 데이터]가 있다면 반드시 이를 최우선으로 참고하여 답변의 <채팅내용>과 <blocks>에 활용해야 합니다. 같은 채팅창의 이전 대화와 이전에 첨부된 이미지는 현재 질문의 직접적인 문맥입니다. 사용자가 "다시", "이렇게", "이전 사진", "방금 이미지"처럼 말하면 새 이미지를 요구하지 말고 대화 이력의 가장 최근 이미지를 기준으로 재분석하세요.
+    ${chatMemory ? `[사용자 장기 대화 메모리]\n${chatMemory}\n` : ''}${patientContextPrompt}\n${CLINICAL_WORKFLOW_GUIDE}\n${RADIOLOGY_WORKFLOW_GUIDE}\n${ragContext}\n${hospitalContext}\n${prescriptionContext}\n
 반드시 아래의 JSON 포맷으로만 응답해주세요. 프론트엔드의 블록 UI를 렌더링하기 위한 필수 규격입니다:
 {
   "intent_type": "general|diagnosis|disease|drug|medication_safety|image|legal|recruit|translation",
@@ -576,11 +669,15 @@ export async function POST(req: Request) {
   "chat_reply": "사용자에게 건넬 친절한 일반 텍스트 답변",
   "blocks": [
     {
-      "block_type": "diagnosis_assist|medication_safety|legal_review|textbook|journal|md_tip|doctor_consensus|doctor_opinion|insurance_warning|expert_warning|image_read|sponsor_card|recruit_cards|drug_cards|prescription_options|translation",
+      "block_type": "patient_context|diagnosis_assist|radiology_checklist|medication_safety|legal_review|textbook|journal|md_tip|doctor_consensus|doctor_opinion|insurance_warning|expert_warning|image_read|sponsor_card|recruit_cards|drug_cards|prescription_options|translation",
       "title": "화면에 표시될 블록의 제목",
       "body": "블록의 내용 (HTML 태그 허용 안됨, 일반 텍스트)",
       "meta_json": {
         "differentials": [{ "diagnosis": "감별진단", "supporting": "근거", "against": "반대 근거", "next_step": "다음 확인" }],
+        "context": [{ "label": "환자 정보 항목", "values": ["대화에서 추출한 값"] }],
+        "open_questions": ["아직 확인해야 할 환자 정보"],
+        "checklist": ["영상/진료 체크리스트"],
+        "red_flags": ["놓치면 안 되는 위험 소견"],
         "medication_checks": [{ "drug": "약품명", "indication_fit": "적응증 적합성", "avoid_with": ["피해야 할 약/상황"], "pairs_well_with": ["함께 고려 가능"], "monitoring": ["모니터링"] }],
         "legal_checks": [{ "issue": "법률/분쟁 리스크", "risk": "low|medium|high", "documentation": "기록할 내용", "mitigation": "예방 조치" }],
         "drugs": [
@@ -613,6 +710,8 @@ export async function POST(req: Request) {
 }
 - 보험 삭감 경고가 필요하면 'insurance_warning', 약물 추천시 'drug_cards', 처방 팁은 'md_tip' 블록을 적극 활용하세요.
 - 진단 보조는 'diagnosis_assist' 블록을 우선 사용하고, 감별진단/근거/추가검사/위험신호/다음 액션을 포함하세요.
+- 환자 정보가 누적되면 'patient_context' 블록으로 현재 환자 요약과 부족한 정보를 먼저 정리하세요.
+- 영상/사진/판독 요청은 'radiology_checklist'와 'image_read' 블록을 함께 사용하고, 영상 종류·부위·품질·위험 소견·다음 검사를 체계적으로 제시하세요.
 - 특정 약물 또는 병용약 질문은 'medication_safety' 블록을 우선 사용하고, 적응증 확인 질문, 같이 쓰면 안 되는 약, 잘 어울리는 조합, 모니터링, 대체약을 포함하세요.
 - 법률/분쟁/의무기록/설명의무 질문은 'legal_review' 블록을 사용하고, 진료기록 문구 예시와 설명의무 체크포인트를 포함하세요. 단, 변호사 법률자문이 아닌 의료분쟁 예방 참고 의견이라고 밝히세요.
 - 사용자가 증상·사진·검사결과·처방 상담을 하면 반드시 먼저 판단하세요: 정보가 부족하면 chat_reply와 md_tip 블록에서 핵심 역문진 3~6개를 물어보세요. 정보가 충분하면 'prescription_options' 블록을 만들어 추천 1, 추천 2 형식으로 제시하세요.
@@ -643,7 +742,7 @@ export async function POST(req: Request) {
        messages.push({ role: 'user', content: question });
     }
 
-    const parsedResponse = enhanceClinicalWorkflowBlocks(await createJsonCompletion(modelToUse, messages), question || '');
+    const parsedResponse = enhanceClinicalWorkflowBlocks(await createJsonCompletion(modelToUse, messages), question || '', history, !!imageBase64 || historyHasImage);
     parsedResponse.aimdnet_engine = {
       mode: 'learning_only',
       answerModel: modelToUse,

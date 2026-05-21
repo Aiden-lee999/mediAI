@@ -523,6 +523,28 @@ export default function DashboardPage() {
              <button onClick={() => { setFeedbackTarget(null); setOpinionModalOpen(true); }} className="w-full border border-dashed border-slate-400 bg-transparent py-2 rounded text-slate-500 text-sm hover:bg-slate-100">+</button>
           </div>
         );
+      case 'patient_context':
+        return (
+          <div key={index} className="bg-cyan-50 border border-cyan-200 p-4 rounded-lg mb-3 shadow-sm">
+            <h3 className="font-bold text-cyan-900 text-sm mb-2">👤 환자 문맥 카드: {title}</h3>
+            <div className="text-sm text-cyan-900 mb-3" dangerouslySetInnerHTML={{ __html: body?.replace(/\n/g, '<br/>') || '' }} />
+            {meta_json?.context?.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+                {meta_json.context.map((item: any, i: number) => (
+                  <div key={i} className="rounded-lg bg-white border border-cyan-100 p-2 text-xs">
+                    <div className="font-black text-cyan-800">{item.label || item.key}</div>
+                    <div className="mt-1 text-slate-700">{(item.values || []).join(', ')}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {meta_json?.open_questions?.length > 0 && (
+              <div className="rounded-lg bg-white/80 p-2 text-xs text-cyan-900">
+                <strong>추가 확인:</strong> {meta_json.open_questions.join(', ')}
+              </div>
+            )}
+          </div>
+        );
       case 'diagnosis_assist':
         return (
           <div key={index} className="bg-indigo-50 border border-indigo-200 p-4 rounded-lg mb-3 shadow-sm">
@@ -540,6 +562,27 @@ export default function DashboardPage() {
                 ))}
               </div>
             )}
+          </div>
+        );
+      case 'radiology_checklist':
+        return (
+          <div key={index} className="bg-sky-50 border border-sky-200 p-4 rounded-lg mb-3 shadow-sm">
+            <h3 className="font-bold text-sky-900 text-sm mb-2">🩻 영상 판독 체크리스트: {title}</h3>
+            <div className="text-sm text-sky-900 mb-3" dangerouslySetInnerHTML={{ __html: body?.replace(/\n/g, '<br/>') || '' }} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="rounded-lg bg-white border border-sky-100 p-3">
+                <div className="font-black text-sky-800 mb-1">체계적 확인</div>
+                <ul className="list-disc pl-4 space-y-1 text-slate-700">
+                  {(meta_json?.checklist || []).map((item: string, i: number) => <li key={i}>{item}</li>)}
+                </ul>
+              </div>
+              <div className="rounded-lg bg-white border border-red-100 p-3">
+                <div className="font-black text-red-700 mb-1">놓치면 안 되는 소견</div>
+                <ul className="list-disc pl-4 space-y-1 text-slate-700">
+                  {(meta_json?.red_flags || []).map((item: string, i: number) => <li key={i}>{item}</li>)}
+                </ul>
+              </div>
+            </div>
           </div>
         );
       case 'medication_safety':
