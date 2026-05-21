@@ -110,7 +110,8 @@ function convertImageFileToJpegDataUrl(file: File, maxSide = 1600, quality = 0.8
 function messageToApiHistory(message: any) {
   if (message?.role === 'user') {
     const content = typeof message.content === 'string' ? message.content : '';
-    return content.trim() ? { role: 'user', content } : null;
+    const image = typeof message.image === 'string' && message.image.startsWith('data:image/') ? message.image : null;
+    return content.trim() || image ? { role: 'user', content: content.trim() || '[첨부 이미지]', image, hasImage: Boolean(image) } : null;
   }
 
   const parsed = message?.parsedData;
@@ -125,6 +126,23 @@ function messageToApiHistory(message: any) {
     .join('\n\n');
 
   return content.trim() ? { role: 'assistant', content } : null;
+}
+
+function keepRecentHistoryImages(history: any[], maxImages = 1) {
+  let remainingImages = maxImages;
+  return history
+    .slice()
+    .reverse()
+    .map((item) => {
+      if (item?.role !== 'user' || !item.image) return item;
+      if (remainingImages > 0) {
+        remainingImages -= 1;
+        return item;
+      }
+      const { image, ...rest } = item;
+      return { ...rest, hasImage: true };
+    })
+    .reverse();
 }
 
 // ==========================================
@@ -334,8 +352,11 @@ export default function DashboardPage() {
        contextualText = `[의료법률 모드] ${targetText}`;
     }
 
+    const latestContextImage = !attachmentBase64
+      ? messages.slice().reverse().find((message) => message?.role === 'user' && message?.image)?.image
+      : null;
     const userMsg = { role: 'user', content: contextualText, image: attachmentBase64 };
-    const displayMsg = { role: 'user', content: targetText, image: attachmentBase64 }; // shown in UI without prefix
+    const displayMsg = { role: 'user', content: targetText, image: attachmentBase64, reusedImageContext: Boolean(latestContextImage) }; // shown in UI without prefix
     
     const newHistory = [...messages, displayMsg];
     setMessages(newHistory);
@@ -355,11 +376,12 @@ export default function DashboardPage() {
       const apiHistory = messages
         .map(messageToApiHistory)
         .filter(Boolean);
+      const contextualHistory = keepRecentHistoryImages(apiHistory);
 
       const res = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, question: contextualText, history: apiHistory, imageBase64: userMsg.image })
+        body: JSON.stringify({ userId: user.id, question: contextualText, history: contextualHistory, imageBase64: userMsg.image })
       });
       const data = await res.json();
       
@@ -783,6 +805,11 @@ export default function DashboardPage() {
                         {msg.role === 'user' ? (
                           <>
                             {msg.image && <img src={msg.image} alt="uploaded" className="w-full w-full rounded-lg mb-3 border border-blue-500" />}
+                            {msg.reusedImageContext && (
+                              <div className="mb-2 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-bold text-blue-50 ring-1 ring-white/25">
+                                이전 첨부 이미지를 함께 참고 중
+                              </div>
+                            )}
                             <div className="leading-relaxed text-sm sm:text-base whitespace-pre-wrap">{msg.content}</div>
                           </>
                         ) : (

@@ -14,6 +14,10 @@ const AIMDNET_FINE_TUNED_MODEL = process.env.AIMDNET_FINE_TUNED_MODEL || '';
 const CHAT_MEMORY_KEY = 'chat_memory_summary';
 const MAX_CHAT_MEMORY_CHARS = 2800;
 
+function isImageDataUrl(value: unknown) {
+  return /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(String(value || ''));
+}
+
 function determineModel(question: string, hasImage: boolean) {
   if (hasImage) return OPENAI_IMAGE_MODEL;
   if (AIMDNET_FINE_TUNED_MODEL) return AIMDNET_FINE_TUNED_MODEL;
@@ -221,6 +225,17 @@ function normalizeHistoryMessage(item: any) {
     .join('\n\n')
     .trim();
 
+  const image = role === 'user' && isImageDataUrl(item?.image) ? item.image : '';
+  if (role === 'user' && image) {
+    return {
+      role,
+      content: [
+        { type: 'text', text: content || '이전에 첨부한 이미지입니다. 이 채팅의 후속 질문에서는 이 이미지를 같은 임상 자료로 참고하세요.' },
+        { type: 'image_url', image_url: { url: image } },
+      ],
+    };
+  }
+
   return content ? { role, content } : null;
 }
 
@@ -275,7 +290,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { question, history, imageBase64, userId } = body;
-    const modelToUse = determineModel(question || '', !!imageBase64);
+    const historyHasImage = Array.isArray(history) && history.some((item: any) => isImageDataUrl(item?.image));
+    const modelToUse = determineModel(question || '', !!imageBase64 || historyHasImage);
     const chatMemory = await getChatMemory(userId);
 
     let ragContext = "";
@@ -325,7 +341,7 @@ export async function POST(req: Request) {
     const messages: any[] = [];
     messages.push({
       role: 'system',
-      content: `당신은 뛰어난 전문 의학 어시스턴트입니다. 아래에 [사용자 장기 대화 메모리], [사전 제공된 지식베이스 RAG 정보], [병의원 DB 조회 정보] 또는 [처방 추천/약가 계산 보조 데이터]가 있다면 반드시 이를 최우선으로 참고하여 답변의 <채팅내용>과 <blocks>에 활용해야 합니다.
+      content: `당신은 뛰어난 전문 의학 어시스턴트입니다. 아래에 [사용자 장기 대화 메모리], [사전 제공된 지식베이스 RAG 정보], [병의원 DB 조회 정보] 또는 [처방 추천/약가 계산 보조 데이터]가 있다면 반드시 이를 최우선으로 참고하여 답변의 <채팅내용>과 <blocks>에 활용해야 합니다. 같은 채팅창의 이전 대화와 이전에 첨부된 이미지는 현재 질문의 직접적인 문맥입니다. 사용자가 "다시", "이렇게", "이전 사진", "방금 이미지"처럼 말하면 새 이미지를 요구하지 말고 대화 이력의 가장 최근 이미지를 기준으로 재분석하세요.
     ${chatMemory ? `[사용자 장기 대화 메모리]\n${chatMemory}\n` : ''}${ragContext}\n${hospitalContext}\n${prescriptionContext}\n
 반드시 아래의 JSON 포맷으로만 응답해주세요. 프론트엔드의 블록 UI를 렌더링하기 위한 필수 규격입니다:
 {
